@@ -112,7 +112,7 @@ export default function App() {
   const [quickFilters, setQuickFilters] = useState<EmployeeStatus[]>([]);
   const [executiveOnly, setExecutiveOnly] = useState(false);
   const [roleLevel, setRoleLevel] = useState<RoleLevel | null>(null);
-  const roleLocationContext = viewMode === "location" ? location : null;
+  const roleLocationContext = location;
   const contextualEmployees = useMemo(
     () => normalizedEmployees.map((employee) => resolveEmployeeForLocation(employee, roleLocationContext)),
     [normalizedEmployees, roleLocationContext]

@@ -415,11 +415,11 @@ export const filterEmployees = (
   }
 
   const matchingEmployees = employees.filter((employee) => {
-    if (options.viewMode === "department" && options.department && employee.department !== options.department) {
+    if (options.department && employee.department !== options.department) {
       return false;
     }
 
-    if (options.viewMode === "location" && options.location && !employeeMatchesLocation(employee, options.location)) {
+    if (options.location && !employeeMatchesLocation(employee, options.location)) {
       return false;
     }
 
