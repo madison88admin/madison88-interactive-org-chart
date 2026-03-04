@@ -33,6 +33,8 @@ interface DetailsPanelProps {
   onAddEmployee: (input: NewEmployeeInput) => void;
   onUpdateEmployee: (input: UpdateEmployeeInput) => void;
   onDeleteEmployee: (id: string) => void;
+  onNotify: (message: string, title?: string) => void;
+  readonlyMode?: boolean;
   isHoverPreview?: boolean;
 }
 
@@ -104,6 +106,8 @@ export function DetailsPanel({
   onAddEmployee,
   onUpdateEmployee,
   onDeleteEmployee,
+  onNotify,
+  readonlyMode = false,
   isHoverPreview = false
 }: DetailsPanelProps) {
   const [showAddForm, setShowAddForm] = useState(false);
@@ -151,18 +155,18 @@ export function DetailsPanel({
       return;
     }
     if (!file.type.startsWith("image/")) {
-      window.alert("Please select a valid image file.");
+      onNotify("Please select a valid image file.", "Validation");
       return;
     }
     if (file.size > MAX_PHOTO_FILE_SIZE) {
-      window.alert("Image is too large. Please use an image up to 2 MB.");
+      onNotify("Image is too large. Please use an image up to 2 MB.", "Validation");
       return;
     }
     try {
       const photoDataUrl = await normalizePhotoFile(file);
       setPhoto(photoDataUrl);
     } catch {
-      window.alert("Unable to load the selected image.");
+      onNotify("Unable to load the selected image.", "Upload Error");
     }
   };
 
@@ -244,8 +248,9 @@ export function DetailsPanel({
         )}
       </section>
 
-      <section>
-        <h4>Add Employee</h4>
+      {!readonlyMode && (
+        <section>
+          <h4>Add Employee</h4>
         {!showAddForm ? (
           <button
             type="button"
@@ -412,10 +417,12 @@ export function DetailsPanel({
           </form>
         )}
         {isMutatingDisabled && <p className="form-note">Select the employee first before adding a direct report.</p>}
-      </section>
+        </section>
+      )}
 
-      <section>
-        <h4>Edit Employee</h4>
+      {!readonlyMode && (
+        <section>
+          <h4>Edit Employee</h4>
         {!showEditForm ? (
           <button
             type="button"
@@ -560,21 +567,31 @@ export function DetailsPanel({
           </form>
         )}
         {isMutatingDisabled && <p className="form-note">Select the employee first before editing details.</p>}
-      </section>
+        </section>
+      )}
 
-      <section>
-        <h4>Delete Employee</h4>
-        <p className="form-note">This permanently removes the employee from the current directory.</p>
-        <button
-          type="button"
-          className="link-btn danger-btn"
-          onClick={() => onDeleteEmployee(selectedEmployee.id)}
-          disabled={isHoverPreview}
-        >
-          Delete Selected Employee
-        </button>
-        {isHoverPreview && <p className="form-note">Select the employee first before deleting.</p>}
-      </section>
+      {!readonlyMode && (
+        <section>
+          <h4>Delete Employee</h4>
+          <p className="form-note">This permanently removes the employee from the current directory.</p>
+          <button
+            type="button"
+            className="link-btn danger-btn"
+            onClick={() => onDeleteEmployee(selectedEmployee.id)}
+            disabled={isHoverPreview}
+          >
+            Delete Selected Employee
+          </button>
+          {isHoverPreview && <p className="form-note">Select the employee first before deleting.</p>}
+        </section>
+      )}
+
+      {readonlyMode && (
+        <section>
+          <h4>View-Only Access</h4>
+          <p className="form-note">Editing actions are disabled in this shared view.</p>
+        </section>
+      )}
     </aside>
   );
 }

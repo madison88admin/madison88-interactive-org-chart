@@ -26,11 +26,12 @@ import {
 } from "./utils/org";
 
 const rawEmployees = employeesData as Employee[];
-const READ_ONLY_MODE = false;
 const EMPLOYEES_STORAGE_KEY = "madison88_employees_v1";
 const HISTORY_LIMIT = 40;
 const generatedAvatarPhoto = (name: string) =>
   `https://ui-avatars.com/api/?name=${encodeURIComponent(name).replace(/%20/g, "+")}&background=2C5F7C&color=fff`;
+type ModalMode = "info" | "confirm";
+type ModalTone = "primary" | "danger";
 
 export default function App() {
   const [employees, setEmployees] = useState<Employee[]>(() => {
@@ -86,12 +87,164 @@ export default function App() {
   const [showSidePanels, setShowSidePanels] = useState(true);
   const [showFilterPanel, setShowFilterPanel] = useState(true);
   const [showAdvancedToolbar, setShowAdvancedToolbar] = useState(false);
+  const [isReadOnlyView, setIsReadOnlyView] = useState(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    return new URLSearchParams(window.location.search).get("readonly") === "1";
+  });
+  const [modalState, setModalState] = useState<{
+    open: boolean;
+    mode: ModalMode;
+    tone: ModalTone;
+    title: string;
+    message: string;
+    confirmText: string;
+    cancelText: string;
+    linkValue: string;
+  }>({
+    open: false,
+    mode: "info",
+    tone: "primary",
+    title: "",
+    message: "",
+    confirmText: "OK",
+    cancelText: "Cancel",
+    linkValue: ""
+  });
+  const modalActionRef = useRef<(() => void) | null>(null);
   const [urlSyncReady, setUrlSyncReady] = useState(false);
   const [zoom, setZoom] = useState(0.42);
   const [translate, setTranslate] = useState({ x: 500, y: 90 });
+  const closeSystemModal = useCallback(() => {
+    modalActionRef.current = null;
+    setModalState((current) => ({ ...current, open: false, linkValue: "" }));
+  }, []);
+  const showInfoModal = useCallback(
+    (message: string, title = "Notification", options?: { linkValue?: string; confirmText?: string }) => {
+      modalActionRef.current = null;
+      setModalState({
+        open: true,
+        mode: "info",
+        tone: "primary",
+        title,
+        message,
+        confirmText: options?.confirmText ?? "OK",
+        cancelText: "Cancel",
+        linkValue: options?.linkValue ?? ""
+      });
+    },
+    []
+  );
+  const showConfirmModal = useCallback(
+    (
+      message: string,
+      onConfirm: () => void,
+      options?: { title?: string; confirmText?: string; cancelText?: string; tone?: ModalTone }
+    ) => {
+      modalActionRef.current = onConfirm;
+      setModalState({
+        open: true,
+        mode: "confirm",
+        tone: options?.tone ?? "primary",
+        title: options?.title ?? "Confirm Action",
+        message,
+        confirmText: options?.confirmText ?? "Confirm",
+        cancelText: options?.cancelText ?? "Cancel",
+        linkValue: ""
+      });
+    },
+    []
+  );
+  const handleSystemModalConfirm = useCallback(() => {
+    const action = modalActionRef.current;
+    modalActionRef.current = null;
+    setModalState((current) => ({ ...current, open: false, linkValue: "" }));
+    action?.();
+  }, []);
+  const focusEmployeeInChart = useCallback((employeeId: string) => {
+    setSelectedEmployeeId(employeeId);
+    setHoveredEmployeeId(null);
+    setHoverPosition(null);
+
+    const centerOnCard = (attempt = 0) => {
+      const wrapper = wrapperRef.current;
+      if (!wrapper) {
+        return;
+      }
+
+      const selectorId = employeeId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+      const card = wrapper.querySelector(`[data-employee-id="${selectorId}"]`) as HTMLElement | null;
+      if (!card) {
+        if (attempt < 10) {
+          window.requestAnimationFrame(() => centerOnCard(attempt + 1));
+        }
+        return;
+      }
+
+      const wrapperRect = wrapper.getBoundingClientRect();
+      const cardRect = card.getBoundingClientRect();
+      const cardCenterX = cardRect.left - wrapperRect.left + cardRect.width / 2;
+      const cardCenterY = cardRect.top - wrapperRect.top + cardRect.height / 2;
+      const targetCenterX = wrapper.clientWidth / 2;
+      const targetCenterY = wrapper.clientHeight / 2;
+      const deltaX = targetCenterX - cardCenterX;
+      const deltaY = targetCenterY - cardCenterY;
+
+      if (Math.abs(deltaX) < 1 && Math.abs(deltaY) < 1) {
+        const existingPulseCards = wrapper.querySelectorAll(".employee-card.focus-pulse");
+        existingPulseCards.forEach((element) => element.classList.remove("focus-pulse"));
+        card.classList.remove("focus-pulse");
+        // Force reflow so repeated focus on the same card replays the pulse.
+        void card.offsetWidth;
+        card.classList.add("focus-pulse");
+        window.setTimeout(() => {
+          card.classList.remove("focus-pulse");
+        }, 1200);
+        return;
+      }
+
+      setTranslate((current) => ({
+        x: current.x + deltaX,
+        y: current.y + deltaY
+      }));
+
+      window.requestAnimationFrame(() => {
+        const nextCard = wrapper.querySelector(`[data-employee-id="${selectorId}"]`) as HTMLElement | null;
+        if (!nextCard) {
+          return;
+        }
+        const existingPulseCards = wrapper.querySelectorAll(".employee-card.focus-pulse");
+        existingPulseCards.forEach((element) => element.classList.remove("focus-pulse"));
+        nextCard.classList.remove("focus-pulse");
+        void nextCard.offsetWidth;
+        nextCard.classList.add("focus-pulse");
+        window.setTimeout(() => {
+          nextCard.classList.remove("focus-pulse");
+        }, 1200);
+      });
+    };
+
+    window.requestAnimationFrame(() => centerOnCard());
+  }, []);
+  const copyViewOnlyLink = useCallback(async () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("readonly", "1");
+    const shareLink = url.toString();
+    try {
+      await window.navigator.clipboard.writeText(shareLink);
+      showInfoModal("View-only link copied.", "Share Link");
+    } catch {
+      showInfoModal(
+        "Clipboard access is blocked on this browser. Copy the link below manually.",
+        "Copy View-Only Link",
+        { linkValue: shareLink, confirmText: "Close" }
+      );
+    }
+  }, [showInfoModal]);
   const zoomPercent = Math.round(zoom * 100);
-  const canUndo = historyPast.length > 0;
-  const canRedo = historyFuture.length > 0;
+  const canUndo = !isReadOnlyView && historyPast.length > 0;
+  const canRedo = !isReadOnlyView && historyFuture.length > 0;
   const departments = useMemo(() => Array.from(new Set(normalizedEmployees.map((employee) => employee.department))).sort(), [normalizedEmployees]);
   const locations = useMemo(() => Array.from(new Set(normalizedEmployees.map((employee) => employee.location))).sort(), [normalizedEmployees]);
   const statusCounts = useMemo(
@@ -308,7 +461,7 @@ export default function App() {
   const downloadPng = useCallback(async () => {
     const surface = wrapperRef.current;
     if (!surface) {
-      window.alert("Unable to export right now. Please try again.");
+      showInfoModal("Unable to export right now. Please try again.", "Export");
       return;
     }
     const exportWidth = Math.max(1, surface.clientWidth);
@@ -333,11 +486,14 @@ export default function App() {
       link.click();
     } catch (error) {
       console.error("Failed to export PNG", error);
-      window.alert("PNG export failed. Check image permissions and try again.");
+      showInfoModal("PNG export failed. Check image permissions and try again.", "Export");
     }
-  }, []);
+  }, [showInfoModal]);
 
   const undoEmployeesChange = useCallback(() => {
+    if (isReadOnlyView) {
+      return;
+    }
     setHistoryPast((past) => {
       if (past.length === 0) {
         return past;
@@ -349,9 +505,12 @@ export default function App() {
     });
     setHoveredEmployeeId(null);
     setHoverPosition(null);
-  }, [employees]);
+  }, [employees, isReadOnlyView]);
 
   const redoEmployeesChange = useCallback(() => {
+    if (isReadOnlyView) {
+      return;
+    }
     setHistoryFuture((future) => {
       if (future.length === 0) {
         return future;
@@ -363,12 +522,15 @@ export default function App() {
     });
     setHoveredEmployeeId(null);
     setHoverPosition(null);
-  }, [employees]);
+  }, [employees, isReadOnlyView]);
 
   useEffect(() => {
     const onKeydown = (event: KeyboardEvent) => {
       const targetTag = (event.target as HTMLElement | null)?.tagName?.toLowerCase();
       if (targetTag === "input" || targetTag === "textarea" || targetTag === "select") {
+        return;
+      }
+      if (isReadOnlyView) {
         return;
       }
 
@@ -401,7 +563,7 @@ export default function App() {
 
     window.addEventListener("keydown", onKeydown);
     return () => window.removeEventListener("keydown", onKeydown);
-  }, [fitView, redoEmployeesChange, undoEmployeesChange, zoomAroundPoint, zoom]);
+  }, [fitView, isReadOnlyView, redoEmployeesChange, undoEmployeesChange, zoomAroundPoint, zoom]);
 
   // Only auto-zoom when layout type changes significantly
   useEffect(() => {
@@ -499,26 +661,38 @@ export default function App() {
   }, [resetAllFilters]);
 
   const resetToOriginalDirectory = useCallback(() => {
-    const confirmed = window.confirm("Reset all changes and restore the original employee directory?");
-    if (!confirmed) {
+    if (isReadOnlyView) {
       return;
     }
+    showConfirmModal(
+      "Reset all changes and restore the original employee directory?",
+      () => {
+        const restored = inferHierarchy(rawEmployees);
+        commitEmployeesChange(restored);
+        setSelectedEmployeeId(restored.find((employee) => !employee.managerId)?.id ?? restored[0]?.id ?? null);
+        setShowFilterPanel(false);
+        applyAllEmployeesPreset();
 
-    const restored = inferHierarchy(rawEmployees);
-    commitEmployeesChange(restored);
-    setSelectedEmployeeId(restored.find((employee) => !employee.managerId)?.id ?? restored[0]?.id ?? null);
-    setShowFilterPanel(false);
-    applyAllEmployeesPreset();
-
-    try {
-      window.localStorage.removeItem(EMPLOYEES_STORAGE_KEY);
-    } catch {
-      // Ignore storage errors.
-    }
-  }, [applyAllEmployeesPreset, commitEmployeesChange]);
+        try {
+          window.localStorage.removeItem(EMPLOYEES_STORAGE_KEY);
+        } catch {
+          // Ignore storage errors.
+        }
+      },
+      {
+        title: "Reset Directory",
+        confirmText: "Reset",
+        cancelText: "Cancel",
+        tone: "danger"
+      }
+    );
+  }, [applyAllEmployeesPreset, commitEmployeesChange, isReadOnlyView, showConfirmModal]);
 
   const addEmployee = useCallback(
     (input: NewEmployeeInput) => {
+      if (isReadOnlyView) {
+        return;
+      }
       const name = input.name.trim();
       const title = input.title.trim();
       const departmentValue = input.department.trim();
@@ -528,12 +702,12 @@ export default function App() {
       const status = input.status;
       const normalizedPhoto = input.photo?.trim() ?? "";
       if (!name || !title || !departmentValue || !locationValue || !normalizedEmail || !startDate) {
-        window.alert("Please complete all required employee fields before saving.");
+        showInfoModal("Please complete all required employee fields before saving.", "Validation");
         return;
       }
 
       if (employees.some((employee) => employee.email.trim().toLowerCase() === normalizedEmail)) {
-        window.alert("Email already exists. Please use a unique email address.");
+        showInfoModal("Email already exists. Please use a unique email address.", "Validation");
         return;
       }
 
@@ -558,10 +732,13 @@ export default function App() {
       commitEmployeesChange([...employees, newEmployee]);
       setSelectedEmployeeId(nextId);
     },
-    [commitEmployeesChange, employees]
+    [commitEmployeesChange, employees, isReadOnlyView, showInfoModal]
   );
 
   const updateEmployee = useCallback((input: UpdateEmployeeInput) => {
+    if (isReadOnlyView) {
+      return;
+    }
     const name = input.name.trim();
     const title = input.title.trim();
     const departmentValue = input.department.trim();
@@ -570,17 +747,17 @@ export default function App() {
     const startDate = input.startDate.trim();
     const normalizedPhoto = input.photo?.trim() ?? "";
     if (!name || !title || !departmentValue || !locationValue || !normalizedEmail || !startDate) {
-      window.alert("Please complete all required employee fields before saving.");
+      showInfoModal("Please complete all required employee fields before saving.", "Validation");
       return;
     }
 
     if (input.managerId === input.id) {
-      window.alert("An employee cannot be their own manager.");
+      showInfoModal("An employee cannot be their own manager.", "Validation");
       return;
     }
 
     if (employees.some((employee) => employee.id !== input.id && employee.email.trim().toLowerCase() === normalizedEmail)) {
-      window.alert("Email already exists. Please use a unique email address.");
+      showInfoModal("Email already exists. Please use a unique email address.", "Validation");
       return;
     }
 
@@ -605,12 +782,15 @@ export default function App() {
           : employee
       )
     );
-  }, [commitEmployeesChange, employees]);
+  }, [commitEmployeesChange, employees, isReadOnlyView, showInfoModal]);
 
   const deleteEmployee = useCallback(
     (employeeId: string) => {
+      if (isReadOnlyView) {
+        return;
+      }
       if (employees.length <= 1) {
-        window.alert("Cannot delete the last employee in the directory.");
+        showInfoModal("Cannot delete the last employee in the directory.", "Validation");
         return;
       }
 
@@ -626,45 +806,52 @@ export default function App() {
           ? `Delete ${employeeToDelete.name}? ${directReportsCount} direct report(s) will be reassigned to ${reassignmentLabel}.`
           : `Delete ${employeeToDelete.name} from the org chart?`;
 
-      if (!window.confirm(confirmationMessage)) {
-        return;
-      }
+      showConfirmModal(
+        confirmationMessage,
+        () => {
+          commitEmployeesChange((current) => {
+            const target = current.find((employee) => employee.id === employeeId);
+            if (!target) {
+              return current;
+            }
 
-      commitEmployeesChange((current) => {
-        const target = current.find((employee) => employee.id === employeeId);
-        if (!target) {
-          return current;
+            const nextManagerId = target.managerId ?? null;
+            return current
+              .filter((employee) => employee.id !== employeeId)
+              .map((employee) =>
+                employee.managerId === employeeId
+                  ? {
+                    ...employee,
+                    managerId: nextManagerId
+                  }
+                  : employee
+              );
+          });
+
+          setHoveredEmployeeId((current) => (current === employeeId ? null : current));
+          setHoverPosition(null);
+          setSelectedEmployeeId((currentSelectedId) => {
+            if (currentSelectedId !== employeeId) {
+              return currentSelectedId;
+            }
+
+            if (employeeToDelete.managerId && employees.some((employee) => employee.id === employeeToDelete.managerId && employee.id !== employeeId)) {
+              return employeeToDelete.managerId;
+            }
+
+            const fallback = employees.find((employee) => employee.id !== employeeId && !employee.managerId)?.id ?? employees.find((employee) => employee.id !== employeeId)?.id ?? null;
+            return fallback;
+          });
+        },
+        {
+          title: "Delete Employee",
+          confirmText: "Delete",
+          cancelText: "Cancel",
+          tone: "danger"
         }
-
-        const nextManagerId = target.managerId ?? null;
-        return current
-          .filter((employee) => employee.id !== employeeId)
-          .map((employee) =>
-            employee.managerId === employeeId
-              ? {
-                ...employee,
-                managerId: nextManagerId
-              }
-              : employee
-          );
-      });
-
-      setHoveredEmployeeId((current) => (current === employeeId ? null : current));
-      setHoverPosition(null);
-      setSelectedEmployeeId((currentSelectedId) => {
-        if (currentSelectedId !== employeeId) {
-          return currentSelectedId;
-        }
-
-        if (employeeToDelete.managerId && employees.some((employee) => employee.id === employeeToDelete.managerId && employee.id !== employeeId)) {
-          return employeeToDelete.managerId;
-        }
-
-        const fallback = employees.find((employee) => employee.id !== employeeId && !employee.managerId)?.id ?? employees.find((employee) => employee.id !== employeeId)?.id ?? null;
-        return fallback;
-      });
+      );
     },
-    [commitEmployeesChange, employees]
+    [commitEmployeesChange, employees, isReadOnlyView, showConfirmModal, showInfoModal]
   );
 
   useEffect(() => {
@@ -677,6 +864,7 @@ export default function App() {
     const role = params.get("role");
     const query = params.get("q");
     const panels = params.get("panels");
+    const readonly = params.get("readonly");
 
     if (preset === "department") {
       applyDepartmentPreset();
@@ -696,6 +884,7 @@ export default function App() {
       setSearchQuery(query);
     }
 
+    setIsReadOnlyView(readonly === "1");
     setShowSidePanels(panels !== "0");
     setShowFilterPanel(params.get("filters") !== "0");
     hasInitializedFromUrl.current = true;
@@ -722,11 +911,14 @@ export default function App() {
     if (showFilterPanel) {
       params.set("filters", "1");
     }
+    if (isReadOnlyView) {
+      params.set("readonly", "1");
+    }
 
     const queryString = params.toString();
     const nextUrl = queryString ? `${window.location.pathname}?${queryString}` : window.location.pathname;
     window.history.replaceState({}, "", nextUrl);
-  }, [urlSyncReady, executiveOnly, roleLevel, isDepartmentLaneView, searchQuery, showSidePanels, showFilterPanel]);
+  }, [urlSyncReady, executiveOnly, roleLevel, isDepartmentLaneView, isReadOnlyView, searchQuery, showSidePanels, showFilterPanel]);
 
   // Custom interaction handlers for the manual chart
   const [isDragging, setIsDragging] = useState(false);
@@ -793,6 +985,25 @@ export default function App() {
     }
   }, [chartDims.width, chartDims.height, fitView, activeFilterCount, isDepartmentLaneView]);
 
+  useEffect(() => {
+    if (!modalState.open) {
+      return;
+    }
+
+    const onModalKeydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeSystemModal();
+        return;
+      }
+      if (event.key === "Enter") {
+        handleSystemModalConfirm();
+      }
+    };
+
+    window.addEventListener("keydown", onModalKeydown);
+    return () => window.removeEventListener("keydown", onModalKeydown);
+  }, [closeSystemModal, handleSystemModalConfirm, modalState.open]);
+
   return (
     <div className="app-shell">
       <header className="top-bar">
@@ -813,6 +1024,7 @@ export default function App() {
             <span>{visibleEmployees.length} filtered</span>
             <span>{normalizedEmployees.length} total</span>
             <span>{activeFilterCount} active filters</span>
+            {isReadOnlyView && <span>View-only mode</span>}
           </div>
           <SearchBar
             query={searchQuery}
@@ -820,7 +1032,7 @@ export default function App() {
             onChange={setSearchQuery}
             onClear={() => setSearchQuery("")}
             onSelectSuggestion={(id) => {
-              setSelectedEmployeeId(id);
+              focusEmployeeInChart(id);
               setViewMode("individual");
               setSearchQuery("");
             }}
@@ -860,7 +1072,7 @@ export default function App() {
                   <p className="pinned-title">{employee.title}</p>
                   <p className="pinned-meta">{employee.department} - {employee.location}</p>
                   <div className="pinned-actions">
-                    <button type="button" className="ghost-btn" onClick={() => setSelectedEmployeeId(employee.id)}>
+                    <button type="button" className="ghost-btn" onClick={() => focusEmployeeInChart(employee.id)}>
                       Focus
                     </button>
                     <button type="button" className="ghost-btn" onClick={() => togglePinnedEmployee(employee.id)}>
@@ -894,7 +1106,7 @@ export default function App() {
         <section className="chart-column">
           <div className="chart-actions">
             <div className="chart-toolbar" aria-label="Zoom controls">
-              <div className="toolbar-group">
+              <div className="toolbar-group toolbar-group-nav">
                 <button type="button" onClick={undoEmployeesChange} disabled={!canUndo} aria-label="Undo last employee change">
                   Undo
                 </button>
@@ -927,19 +1139,8 @@ export default function App() {
                 <button type="button" onClick={fitView}>
                   Fit View
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    fitView();
-                  }}
-                >
-                  Reset View
-                </button>
-                <button type="button" onClick={centerCanvas}>
-                  Center Canvas
-                </button>
               </div>
-              <div className="toolbar-group toolbar-group-end">
+              <div className="toolbar-group toolbar-group-end toolbar-group-actions">
                 <button type="button" onClick={downloadPng}>
                   Download PNG
                 </button>
@@ -959,19 +1160,29 @@ export default function App() {
             </div>
             {showAdvancedToolbar && (
               <div className="toolbar-extra" id="advanced-toolbar-controls">
-                {!READ_ONLY_MODE && (
-                  <>
-                    <button type="button" onClick={() => setIsDepartmentLaneView((current) => !current)}>
-                      {isDepartmentLaneView ? "Hierarchical View" : "Department Lanes"}
-                    </button>
-                    <button type="button" onClick={() => setShowDepartmentHeatmap((current) => !current)}>
-                      {showDepartmentHeatmap ? "Hide Heatmap" : "Department Heatmap"}
-                    </button>
-                    <button type="button" onClick={() => setIsCompactLayout((current) => !current)}>
-                      {isCompactLayout ? "Comfort Layout" : "Compact Layout"}
-                    </button>
-                  </>
-                )}
+                <button type="button" onClick={() => copyViewOnlyLink()}>
+                  Copy View Link
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    fitView();
+                  }}
+                >
+                  Reset View
+                </button>
+                <button type="button" onClick={centerCanvas}>
+                  Center Canvas
+                </button>
+                <button type="button" onClick={() => setIsDepartmentLaneView((current) => !current)}>
+                  {isDepartmentLaneView ? "Hierarchical View" : "Department Lanes"}
+                </button>
+                <button type="button" onClick={() => setShowDepartmentHeatmap((current) => !current)}>
+                  {showDepartmentHeatmap ? "Hide Heatmap" : "Department Heatmap"}
+                </button>
+                <button type="button" onClick={() => setIsCompactLayout((current) => !current)}>
+                  {isCompactLayout ? "Comfort Layout" : "Compact Layout"}
+                </button>
                 <button
                   type="button"
                   onClick={() => selectedEmployeeId && togglePinnedEmployee(selectedEmployeeId)}
@@ -979,10 +1190,12 @@ export default function App() {
                 >
                   {isSelectedPinned ? "Unpin Selected" : "Pin Selected"}
                 </button>
-                <button type="button" onClick={resetToOriginalDirectory}>
-                  Reset Directory
-                </button>
-                {READ_ONLY_MODE && (
+                {!isReadOnlyView && (
+                  <button type="button" onClick={resetToOriginalDirectory}>
+                    Reset Directory
+                  </button>
+                )}
+                {isReadOnlyView && (
                   <button type="button" onClick={() => setShowSidePanels((current) => !current)}>
                     {showSidePanels ? "Hide Panels" : "Show Panels"}
                   </button>
@@ -1086,7 +1299,7 @@ export default function App() {
                   statusCounts={statusCounts}
                   roleLevelCounts={roleLevelCounts as any}
                   executiveCount={executiveCount}
-                  readonlyMode={READ_ONLY_MODE}
+                  readonlyMode={isReadOnlyView}
                   hasActiveFilters={activeFilterCount > 0}
                   onViewMode={(mode) => setViewMode(mode)}
                   onDepartment={(value) => {
@@ -1138,15 +1351,72 @@ export default function App() {
         <DetailsPanel
           selectedEmployee={detailsEmployee}
           employees={normalizedEmployees}
-          onFocus={setSelectedEmployeeId}
+          onFocus={focusEmployeeInChart}
           onAddEmployee={addEmployee}
           onUpdateEmployee={updateEmployee}
           onDeleteEmployee={deleteEmployee}
+          onNotify={showInfoModal}
+          readonlyMode={isReadOnlyView}
           isHoverPreview={Boolean(hoveredEmployee)}
         />
       </main>
       {hoveredEmployee && hoverPosition && (
         <HoverTooltip employee={hoveredEmployee} employees={normalizedEmployees} position={hoverPosition} />
+      )}
+      {modalState.open && (
+        <div className="system-modal-backdrop" onClick={closeSystemModal}>
+          <section
+            className={`system-modal ${modalState.tone === "danger" ? "is-danger" : ""}`}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="system-modal-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 id="system-modal-title">{modalState.title}</h3>
+            <p>{modalState.message}</p>
+            {modalState.linkValue && (
+              <div className="system-modal-link-wrap">
+                <input
+                  value={modalState.linkValue}
+                  readOnly
+                  onFocus={(event) => event.currentTarget.select()}
+                  onClick={(event) => event.currentTarget.select()}
+                  aria-label="Share link"
+                />
+              </div>
+            )}
+            <div className="system-modal-actions">
+              {modalState.mode === "confirm" && (
+                <button type="button" className="ghost-btn" onClick={closeSystemModal}>
+                  {modalState.cancelText}
+                </button>
+              )}
+              {modalState.linkValue && (
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  onClick={async () => {
+                    try {
+                      await window.navigator.clipboard.writeText(modalState.linkValue);
+                      showInfoModal("View-only link copied.", "Share Link");
+                    } catch {
+                      // Keep modal open so user can manually copy.
+                    }
+                  }}
+                >
+                  Copy Link
+                </button>
+              )}
+              <button
+                type="button"
+                className={modalState.tone === "danger" ? "danger-btn" : ""}
+                onClick={handleSystemModalConfirm}
+              >
+                {modalState.confirmText}
+              </button>
+            </div>
+          </section>
+        </div>
       )}
     </div>
   );

@@ -1394,13 +1394,17 @@ body {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 0.45rem;
+  gap: 0.4rem;
 }
 
 .toolbar-group {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.45rem;
+  gap: 0.38rem;
+  padding: 0.24rem;
+  border-radius: 0.82rem;
+  border: 1px solid rgba(138, 192, 219, 0.26);
+  background: rgba(12, 32, 48, 0.42);
 }
 
 .toolbar-group-end {
@@ -1409,11 +1413,13 @@ body {
 
 .toolbar-extra {
   margin-top: 0.45rem;
-  padding-top: 0.42rem;
-  border-top: 1px solid rgba(140, 196, 223, 0.25);
+  padding: 0.4rem;
+  border-radius: 0.82rem;
+  border: 1px solid rgba(140, 196, 223, 0.25);
+  background: rgba(10, 28, 42, 0.42);
   display: flex;
   flex-wrap: wrap;
-  gap: 0.45rem;
+  gap: 0.38rem;
 }
 
 .toolbar-meta {
@@ -1445,7 +1451,8 @@ body {
   font-weight: 700;
   font-size: 0.83rem;
   line-height: 1.25;
-  padding: 0.44rem 0.68rem;
+  padding: 0.4rem 0.64rem;
+  white-space: nowrap;
   transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
@@ -1603,6 +1610,10 @@ body {
   box-shadow: 0 0 0 2px rgba(43, 186, 245, 0.25), 0 16px 30px rgba(5, 14, 22, 0.28);
 }
 
+.employee-card.focus-pulse {
+  animation: focus-target-pulse 1.2s ease;
+}
+
 .employee-card.not-match {
   opacity: 0.3;
   filter: grayscale(0.9);
@@ -1641,6 +1652,18 @@ body {
   font-weight: 800;
   color: #0f5875;
   background: rgba(24, 108, 145, 0.12);
+}
+
+@keyframes focus-target-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(71, 203, 255, 0.7), 0 14px 28px rgba(4, 13, 21, 0.3);
+  }
+  45% {
+    box-shadow: 0 0 0 12px rgba(71, 203, 255, 0), 0 18px 30px rgba(4, 13, 21, 0.35);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(71, 203, 255, 0), 0 14px 28px rgba(4, 13, 21, 0.3);
+  }
 }
 
 .search-wrap {
@@ -1961,6 +1984,79 @@ body {
   background: rgba(18, 44, 62, 0.55);
 }
 
+.system-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 240;
+  background: rgba(3, 13, 22, 0.58);
+  backdrop-filter: blur(2px);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.system-modal {
+  width: min(520px, 100%);
+  border-radius: 0.95rem;
+  border: 1px solid rgba(140, 198, 224, 0.5);
+  background: linear-gradient(165deg, rgba(10, 30, 46, 0.96), rgba(8, 23, 36, 0.95));
+  box-shadow: 0 24px 40px rgba(0, 7, 12, 0.55);
+  padding: 1rem;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.system-modal.is-danger {
+  border-color: rgba(238, 145, 145, 0.52);
+}
+
+.system-modal h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #ecf7ff;
+}
+
+.system-modal p {
+  margin: 0;
+  color: #c8e3f2;
+  line-height: 1.45;
+}
+
+.system-modal-link-wrap input {
+  width: 100%;
+  border-radius: 0.62rem;
+  border: 1px solid rgba(145, 194, 219, 0.62);
+  background: rgba(226, 241, 249, 0.95);
+  color: #12384d;
+  font-weight: 600;
+  font-size: 0.86rem;
+  padding: 0.52rem 0.62rem;
+}
+
+.system-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.44rem;
+  flex-wrap: wrap;
+}
+
+.system-modal-actions button {
+  border-radius: 0.66rem;
+  border: 1px solid rgba(147, 199, 224, 0.52);
+  background: rgba(20, 47, 66, 0.72);
+  color: #ddf1ff;
+  font-weight: 700;
+  font-size: 0.83rem;
+  line-height: 1.25;
+  padding: 0.4rem 0.68rem;
+  cursor: pointer;
+}
+
+.system-modal-actions button:hover {
+  border-color: rgba(102, 210, 255, 0.72);
+  background: rgba(26, 57, 79, 0.9);
+}
+
 .hover-tooltip {
   border-radius: 0.9rem;
   border: 1px solid rgba(152, 202, 226, 0.55);
@@ -2123,6 +2219,11 @@ body {
 .toolbar-more-btn.is-active {
   border-color: rgba(105, 212, 255, 0.82);
   background: rgba(32, 72, 98, 0.92);
+}
+
+.toolbar-group-actions .toolbar-more-btn {
+  border-color: rgba(102, 210, 255, 0.62);
+  background: rgba(22, 56, 78, 0.88);
 }
 
 .toolbar-select {

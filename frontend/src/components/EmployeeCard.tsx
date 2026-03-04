@@ -39,6 +39,7 @@ export function EmployeeCard({
     <button
       type="button"
       className={`employee-card ${statusClass} ${selected ? "is-selected" : ""} ${!isMatch ? "not-match" : ""} ${compact ? "is-compact" : ""} ${isLowZoom ? "zoom-low" : ""} ${isVeryLowZoom ? "zoom-very-low" : ""}`}
+      data-employee-id={employee.id}
       onClick={() => onClick(employee.id)}
       onMouseEnter={() => onHover?.(employee.id)}
       onMouseLeave={() => onHover?.(null)}
