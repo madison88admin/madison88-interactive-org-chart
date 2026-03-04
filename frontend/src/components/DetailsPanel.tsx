@@ -9,6 +9,7 @@ export interface NewEmployeeInput {
   email: string;
   startDate: string;
   managerId: string | null;
+  photo?: string;
 }
 
 export interface UpdateEmployeeInput {
@@ -21,6 +22,7 @@ export interface UpdateEmployeeInput {
   startDate: string;
   status: Employee["status"];
   managerId: string | null;
+  photo?: string;
 }
 
 interface DetailsPanelProps {
@@ -39,6 +41,15 @@ const STATUS_LABEL: Record<Employee["status"], string> = {
   enhanced: "Enhanced Title 2026",
   new_hire: "New Hire 2026"
 };
+const MAX_PHOTO_FILE_SIZE = 2 * 1024 * 1024;
+
+const readPhotoAsDataUrl = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(new Error("Unable to read image file."));
+    reader.readAsDataURL(file);
+  });
 
 export function DetailsPanel({
   selectedEmployee,
@@ -58,6 +69,7 @@ export function DetailsPanel({
   const [formEmail, setFormEmail] = useState("");
   const [formStartDate, setFormStartDate] = useState("");
   const [formManagerId, setFormManagerId] = useState<string>("__selected__");
+  const [formPhoto, setFormPhoto] = useState("");
   const [editName, setEditName] = useState("");
   const [editTitle, setEditTitle] = useState("");
   const [editDepartment, setEditDepartment] = useState("");
@@ -66,6 +78,7 @@ export function DetailsPanel({
   const [editStartDate, setEditStartDate] = useState("");
   const [editStatus, setEditStatus] = useState<Employee["status"]>("standard");
   const [editManagerId, setEditManagerId] = useState<string>("__current__");
+  const [editPhoto, setEditPhoto] = useState("");
   const isMutatingDisabled = isHoverPreview;
   const locationOptions = useMemo(
     () =>
@@ -85,6 +98,26 @@ export function DetailsPanel({
       setShowEditForm(false);
     }
   }, [isMutatingDisabled]);
+
+  const handlePhotoSelection = async (file: File | null, setPhoto: (value: string) => void) => {
+    if (!file) {
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      window.alert("Please select a valid image file.");
+      return;
+    }
+    if (file.size > MAX_PHOTO_FILE_SIZE) {
+      window.alert("Image is too large. Please use an image up to 2 MB.");
+      return;
+    }
+    try {
+      const photoDataUrl = await readPhotoAsDataUrl(file);
+      setPhoto(photoDataUrl);
+    } catch {
+      window.alert("Unable to load the selected image.");
+    }
+  };
 
   if (!selectedEmployee) {
     return (
@@ -170,6 +203,7 @@ export function DetailsPanel({
               setFormEmail("");
               setFormStartDate(new Date().toISOString().slice(0, 10));
               setFormManagerId("__selected__");
+              setFormPhoto("");
               setShowAddForm(true);
             }}
           >
@@ -188,7 +222,8 @@ export function DetailsPanel({
                 location: formLocation.trim(),
                 email: formEmail.trim(),
                 startDate: formStartDate,
-                managerId
+                managerId,
+                photo: formPhoto.trim()
               });
               setFormName("");
               setFormTitle("");
@@ -197,6 +232,7 @@ export function DetailsPanel({
               setFormEmail("");
               setFormStartDate("");
               setFormManagerId("__selected__");
+              setFormPhoto("");
               setShowAddForm(false);
             }}
           >
@@ -231,6 +267,33 @@ export function DetailsPanel({
               <input type="date" value={formStartDate} onChange={(event) => setFormStartDate(event.target.value)} required />
             </label>
             <label className="form-field">
+              <span>Photo</span>
+              <div className="photo-input-wrap">
+                <div className="form-photo-preview">
+                  {formPhoto ? <img src={formPhoto} alt="New employee photo preview" loading="lazy" /> : <span className="form-photo-empty">No image</span>}
+                </div>
+                <div className="photo-input-controls">
+                  <input
+                    type="url"
+                    value={formPhoto}
+                    onChange={(event) => setFormPhoto(event.target.value)}
+                    placeholder="Paste photo URL (optional)"
+                  />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={async (event) => {
+                      const picker = event.currentTarget;
+                      const file = picker.files?.[0] ?? null;
+                      await handlePhotoSelection(file, setFormPhoto);
+                      picker.value = "";
+                    }}
+                  />
+                </div>
+              </div>
+              <small className="form-note form-photo-note">Optional. Upload JPG/PNG/WebP up to 2 MB, or paste an image URL.</small>
+            </label>
+            <label className="form-field">
               <span>Manager</span>
               <select value={formManagerId} onChange={(event) => setFormManagerId(event.target.value)}>
                 <option value="__selected__">Manager: {selectedEmployee.name}</option>
@@ -260,6 +323,7 @@ export function DetailsPanel({
                   setFormEmail("");
                   setFormStartDate("");
                   setFormManagerId("__selected__");
+                  setFormPhoto("");
                 }}
               >
                 Cancel
@@ -286,6 +350,7 @@ export function DetailsPanel({
               setEditStartDate(selectedEmployee.startDate);
               setEditStatus(selectedEmployee.status);
               setEditManagerId(selectedEmployee.managerId ?? "__none__");
+              setEditPhoto(selectedEmployee.photo);
               setShowEditForm(true);
             }}
           >
@@ -307,7 +372,8 @@ export function DetailsPanel({
                 email: editEmail.trim(),
                 startDate: editStartDate,
                 status: editStatus,
-                managerId
+                managerId,
+                photo: editPhoto.trim()
               });
               setShowEditForm(false);
             }}
@@ -341,6 +407,33 @@ export function DetailsPanel({
             <label className="form-field">
               <span>Start Date</span>
               <input type="date" value={editStartDate} onChange={(event) => setEditStartDate(event.target.value)} required />
+            </label>
+            <label className="form-field">
+              <span>Photo</span>
+              <div className="photo-input-wrap">
+                <div className="form-photo-preview">
+                  {editPhoto ? <img src={editPhoto} alt="Updated employee photo preview" loading="lazy" /> : <span className="form-photo-empty">No image</span>}
+                </div>
+                <div className="photo-input-controls">
+                  <input
+                    type="url"
+                    value={editPhoto}
+                    onChange={(event) => setEditPhoto(event.target.value)}
+                    placeholder="Paste photo URL (optional)"
+                  />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={async (event) => {
+                      const picker = event.currentTarget;
+                      const file = picker.files?.[0] ?? null;
+                      await handlePhotoSelection(file, setEditPhoto);
+                      picker.value = "";
+                    }}
+                  />
+                </div>
+              </div>
+              <small className="form-note form-photo-note">Upload a new image or keep the existing one.</small>
             </label>
             <label className="form-field">
               <span>Status</span>

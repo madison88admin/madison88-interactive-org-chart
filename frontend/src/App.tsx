@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toPng } from "html-to-image";
 import employeesData from "./data/employees.json";
 import { DetailsPanel } from "./components/DetailsPanel";
 import { FilterPanel } from "./components/FilterPanel";
@@ -27,6 +28,9 @@ import {
 const rawEmployees = employeesData as Employee[];
 const READ_ONLY_MODE = false;
 const EMPLOYEES_STORAGE_KEY = "madison88_employees_v1";
+const HISTORY_LIMIT = 40;
+const generatedAvatarPhoto = (name: string) =>
+  `https://ui-avatars.com/api/?name=${encodeURIComponent(name).replace(/%20/g, "+")}&background=2C5F7C&color=fff`;
 
 export default function App() {
   const [employees, setEmployees] = useState<Employee[]>(() => {
@@ -45,6 +49,23 @@ export default function App() {
     }
     return inferHierarchy(rawEmployees);
   });
+  const [historyPast, setHistoryPast] = useState<Employee[][]>([]);
+  const [historyFuture, setHistoryFuture] = useState<Employee[][]>([]);
+  const [depthLimit, setDepthLimit] = useState<number | null>(null);
+  const [showDepartmentHeatmap, setShowDepartmentHeatmap] = useState(false);
+  const [pinnedEmployeeIds, setPinnedEmployeeIds] = useState<string[]>([]);
+
+  const commitEmployeesChange = useCallback((nextState: Employee[] | ((current: Employee[]) => Employee[])) => {
+    setEmployees((current) => {
+      const next = typeof nextState === "function" ? (nextState as (current: Employee[]) => Employee[])(current) : nextState;
+      if (next === current) {
+        return current;
+      }
+      setHistoryPast((past) => [...past.slice(-(HISTORY_LIMIT - 1)), current]);
+      setHistoryFuture([]);
+      return next;
+    });
+  }, []);
   const normalizedEmployees = useMemo(() => ensureConnectedHierarchy(employees), [employees]);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const hasInitializedFromUrl = useRef(false);
@@ -68,6 +89,8 @@ export default function App() {
   const [zoom, setZoom] = useState(0.42);
   const [translate, setTranslate] = useState({ x: 500, y: 90 });
   const zoomPercent = Math.round(zoom * 100);
+  const canUndo = historyPast.length > 0;
+  const canRedo = historyFuture.length > 0;
   const departments = useMemo(() => Array.from(new Set(normalizedEmployees.map((employee) => employee.department))).sort(), [normalizedEmployees]);
   const locations = useMemo(() => Array.from(new Set(normalizedEmployees.map((employee) => employee.location))).sort(), [normalizedEmployees]);
   const statusCounts = useMemo(
@@ -126,6 +149,57 @@ export default function App() {
     [normalizedEmployees, viewMode, department, location, quickFilters, executiveOnly, roleLevel, searchQuery, selectedEmployeeId, activeFilterCount]
   );
 
+  const { depthById, maxVisibleDepth } = useMemo(() => {
+    const depthMap = new Map<string, number>();
+    if (visibleEmployees.length === 0) {
+      return { depthById: depthMap, maxVisibleDepth: 1 };
+    }
+
+    const byId = new Map(visibleEmployees.map((employee) => [employee.id, employee]));
+    const childrenByManager = new Map<string, Employee[]>();
+    visibleEmployees.forEach((employee) => {
+      if (!employee.managerId || !byId.has(employee.managerId)) {
+        return;
+      }
+      const list = childrenByManager.get(employee.managerId) ?? [];
+      list.push(employee);
+      childrenByManager.set(employee.managerId, list);
+    });
+
+    const roots = visibleEmployees.filter((employee) => !employee.managerId || !byId.has(employee.managerId));
+    const queue = roots.map((employee) => ({ id: employee.id, depth: 1 }));
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (!current || depthMap.has(current.id)) {
+        continue;
+      }
+      depthMap.set(current.id, current.depth);
+      (childrenByManager.get(current.id) ?? []).forEach((child) => {
+        queue.push({ id: child.id, depth: current.depth + 1 });
+      });
+    }
+
+    visibleEmployees.forEach((employee) => {
+      if (!depthMap.has(employee.id)) {
+        depthMap.set(employee.id, 1);
+      }
+    });
+
+    const maxDepth = Math.max(...Array.from(depthMap.values()), 1);
+    return { depthById: depthMap, maxVisibleDepth: maxDepth };
+  }, [visibleEmployees]);
+
+  const chartEmployees = useMemo(
+    () => (depthLimit ? visibleEmployees.filter((employee) => (depthById.get(employee.id) ?? 1) <= depthLimit) : visibleEmployees),
+    [visibleEmployees, depthById, depthLimit]
+  );
+
+  const chartMatchingIds = useMemo(() => {
+    const shownIds = new Set(chartEmployees.map((employee) => employee.id));
+    return new Set(Array.from(matchingIds).filter((id) => shownIds.has(id)));
+  }, [chartEmployees, matchingIds]);
+  const depthOptions = useMemo(() => Array.from({ length: maxVisibleDepth }, (_, index) => index + 1), [maxVisibleDepth]);
+
   const selectedEmployee = useMemo(
     () => visibleEmployees.find((employee: Employee) => employee.id === selectedEmployeeId) ?? null,
     [visibleEmployees, selectedEmployeeId]
@@ -135,6 +209,14 @@ export default function App() {
     [visibleEmployees, hoveredEmployeeId]
   );
   const detailsEmployee = hoveredEmployee ?? selectedEmployee;
+  const pinnedEmployees = useMemo(
+    () =>
+      pinnedEmployeeIds
+        .map((id) => normalizedEmployees.find((employee) => employee.id === id))
+        .filter((employee): employee is Employee => Boolean(employee)),
+    [pinnedEmployeeIds, normalizedEmployees]
+  );
+  const isSelectedPinned = Boolean(selectedEmployeeId && pinnedEmployeeIds.includes(selectedEmployeeId));
 
   const suggestions = useMemo(() => searchSuggestions(normalizedEmployees, searchQuery), [normalizedEmployees, searchQuery]);
 
@@ -197,51 +279,88 @@ export default function App() {
     [translate, zoom]
   );
 
-  const downloadPng = useCallback(() => {
-    const svg = wrapperRef.current?.querySelector("svg");
-    if (!svg) {
+  const downloadPng = useCallback(async () => {
+    const exportRoot = wrapperRef.current?.querySelector(".org-export-root") as HTMLElement | null;
+    if (!exportRoot) {
+      window.alert("Unable to export right now. Please try again.");
       return;
     }
 
-    const rect = (svg as SVGElement).getBoundingClientRect();
-    const width = Math.max(1200, Math.floor(rect.width));
-    const height = Math.max(720, Math.floor(rect.height));
-    const serializer = new XMLSerializer();
-    const serialized = serializer.serializeToString(svg);
-    const blob = new Blob([serialized], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const image = new Image();
+    const rawWidth = Math.max(1200, exportRoot.scrollWidth);
+    const rawHeight = Math.max(720, exportRoot.scrollHeight);
+    const maxDimension = 8000;
+    const scaleFactor = Math.min(1, maxDimension / Math.max(rawWidth, rawHeight));
+    const exportWidth = Math.floor(rawWidth * scaleFactor);
+    const exportHeight = Math.floor(rawHeight * scaleFactor);
 
-    image.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const context = canvas.getContext("2d");
-      if (!context) {
-        URL.revokeObjectURL(url);
-        return;
-      }
-      context.fillStyle = "#e7f3f8";
-      context.fillRect(0, 0, width, height);
-      context.drawImage(image, 0, 0, width, height);
-      URL.revokeObjectURL(url);
-      const pngUrl = canvas.toDataURL("image/png");
+    try {
+      const pngUrl = await toPng(exportRoot, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#071723",
+        width: exportWidth,
+        height: exportHeight,
+        imagePlaceholder: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
+      });
+
       const link = document.createElement("a");
       link.href = pngUrl;
       link.download = `madison88-org-${new Date().toISOString().slice(0, 10)}.png`;
       link.click();
-    };
-
-    image.onerror = () => {
-      URL.revokeObjectURL(url);
-    };
-    image.src = url;
+    } catch (error) {
+      console.error("Failed to export PNG", error);
+      window.alert("PNG export failed. Check image permissions and try again.");
+    }
   }, []);
+
+  const undoEmployeesChange = useCallback(() => {
+    setHistoryPast((past) => {
+      if (past.length === 0) {
+        return past;
+      }
+      const previous = past[past.length - 1];
+      setHistoryFuture((future) => [employees, ...future].slice(0, HISTORY_LIMIT));
+      setEmployees(previous);
+      return past.slice(0, -1);
+    });
+    setHoveredEmployeeId(null);
+    setHoverPosition(null);
+  }, [employees]);
+
+  const redoEmployeesChange = useCallback(() => {
+    setHistoryFuture((future) => {
+      if (future.length === 0) {
+        return future;
+      }
+      const [next, ...rest] = future;
+      setHistoryPast((past) => [...past.slice(-(HISTORY_LIMIT - 1)), employees]);
+      setEmployees(next);
+      return rest;
+    });
+    setHoveredEmployeeId(null);
+    setHoverPosition(null);
+  }, [employees]);
 
   useEffect(() => {
     const onKeydown = (event: KeyboardEvent) => {
       const targetTag = (event.target as HTMLElement | null)?.tagName?.toLowerCase();
       if (targetTag === "input" || targetTag === "textarea" || targetTag === "select") {
+        return;
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          redoEmployeesChange();
+        } else {
+          undoEmployeesChange();
+        }
+        return;
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        redoEmployeesChange();
         return;
       }
 
@@ -258,7 +377,7 @@ export default function App() {
 
     window.addEventListener("keydown", onKeydown);
     return () => window.removeEventListener("keydown", onKeydown);
-  }, [fitView, zoomAroundPoint, zoom]);
+  }, [fitView, redoEmployeesChange, undoEmployeesChange, zoomAroundPoint, zoom]);
 
   // Only auto-zoom when layout type changes significantly
   useEffect(() => {
@@ -281,6 +400,36 @@ export default function App() {
       // Ignore persistence errors in restricted/private environments.
     }
   }, [employees]);
+
+  useEffect(() => {
+    if (depthLimit && depthLimit > maxVisibleDepth) {
+      setDepthLimit(maxVisibleDepth);
+    }
+  }, [depthLimit, maxVisibleDepth]);
+
+  useEffect(() => {
+    if (selectedEmployeeId && !normalizedEmployees.some((employee) => employee.id === selectedEmployeeId)) {
+      setSelectedEmployeeId(normalizedEmployees.find((employee) => !employee.managerId)?.id ?? normalizedEmployees[0]?.id ?? null);
+    }
+  }, [normalizedEmployees, selectedEmployeeId]);
+
+  useEffect(() => {
+    const employeeIdSet = new Set(normalizedEmployees.map((employee) => employee.id));
+    setPinnedEmployeeIds((current) => current.filter((id) => employeeIdSet.has(id)));
+  }, [normalizedEmployees]);
+
+  const togglePinnedEmployee = useCallback((employeeId: string) => {
+    setPinnedEmployeeIds((current) => {
+      if (current.includes(employeeId)) {
+        return current.filter((id) => id !== employeeId);
+      }
+      const next = [...current, employeeId];
+      if (next.length > 6) {
+        return next.slice(next.length - 6);
+      }
+      return next;
+    });
+  }, []);
 
   const resetAllFilters = useCallback(() => {
     setViewMode("full");
@@ -332,7 +481,7 @@ export default function App() {
     }
 
     const restored = inferHierarchy(rawEmployees);
-    setEmployees(restored);
+    commitEmployeesChange(restored);
     setSelectedEmployeeId(restored.find((employee) => !employee.managerId)?.id ?? restored[0]?.id ?? null);
     setShowFilterPanel(false);
     applyAllEmployeesPreset();
@@ -342,7 +491,7 @@ export default function App() {
     } catch {
       // Ignore storage errors.
     }
-  }, [applyAllEmployeesPreset]);
+  }, [applyAllEmployeesPreset, commitEmployeesChange]);
 
   const addEmployee = useCallback(
     (input: NewEmployeeInput) => {
@@ -352,6 +501,7 @@ export default function App() {
       const locationValue = input.location.trim();
       const normalizedEmail = input.email.trim().toLowerCase();
       const startDate = input.startDate.trim();
+      const normalizedPhoto = input.photo?.trim() ?? "";
       if (!name || !title || !departmentValue || !locationValue || !normalizedEmail || !startDate) {
         window.alert("Please complete all required employee fields before saving.");
         return;
@@ -377,13 +527,13 @@ export default function App() {
         startDate,
         status: "standard",
         managerId: input.managerId,
-        photo: `https://ui-avatars.com/api/?name=${encodeURIComponent(name).replace(/%20/g, "+")}&background=2C5F7C&color=fff`
+        photo: normalizedPhoto || generatedAvatarPhoto(name)
       };
 
-      setEmployees((current) => [...current, newEmployee]);
+      commitEmployeesChange([...employees, newEmployee]);
       setSelectedEmployeeId(nextId);
     },
-    [employees]
+    [commitEmployeesChange, employees]
   );
 
   const updateEmployee = useCallback((input: UpdateEmployeeInput) => {
@@ -393,6 +543,7 @@ export default function App() {
     const locationValue = input.location.trim();
     const normalizedEmail = input.email.trim().toLowerCase();
     const startDate = input.startDate.trim();
+    const normalizedPhoto = input.photo?.trim() ?? "";
     if (!name || !title || !departmentValue || !locationValue || !normalizedEmail || !startDate) {
       window.alert("Please complete all required employee fields before saving.");
       return;
@@ -408,8 +559,8 @@ export default function App() {
       return;
     }
 
-    setEmployees((current) =>
-      current.map((employee) =>
+    commitEmployeesChange(
+      employees.map((employee) =>
         employee.id === input.id
           ? {
             ...employee,
@@ -420,12 +571,13 @@ export default function App() {
             email: normalizedEmail,
             startDate,
             status: input.status,
-            managerId: input.managerId
+            managerId: input.managerId,
+            photo: normalizedPhoto || employee.photo || generatedAvatarPhoto(name)
           }
           : employee
       )
     );
-  }, [employees]);
+  }, [commitEmployeesChange, employees]);
 
   const deleteEmployee = useCallback(
     (employeeId: string) => {
@@ -450,7 +602,7 @@ export default function App() {
         return;
       }
 
-      setEmployees((current) => {
+      commitEmployeesChange((current) => {
         const target = current.find((employee) => employee.id === employeeId);
         if (!target) {
           return current;
@@ -484,7 +636,7 @@ export default function App() {
         return fallback;
       });
     },
-    [employees]
+    [commitEmployeesChange, employees]
   );
 
   useEffect(() => {
@@ -628,7 +780,8 @@ export default function App() {
         </div>
         <div className="header-tools">
           <div className="header-meta" aria-label="view metrics">
-            <span>{visibleEmployees.length} visible</span>
+            <span>{chartEmployees.length} shown</span>
+            <span>{visibleEmployees.length} filtered</span>
             <span>{normalizedEmployees.length} total</span>
             <span>{activeFilterCount} active filters</span>
           </div>
@@ -653,7 +806,7 @@ export default function App() {
               <h3>Live Insights</h3>
               <div className="insight-pill">
                 <span>Visible Team</span>
-                <strong>{visibleEmployees.length}</strong>
+                <strong>{chartEmployees.length}</strong>
               </div>
               <div className="insight-pill">
                 <span>Active Locations</span>
@@ -665,7 +818,29 @@ export default function App() {
               </div>
             </section>
             <Legend />
-            <MiniMap zoom={zoom} translate={translate} totalNodes={visibleEmployees.length} />
+            <MiniMap zoom={zoom} translate={translate} totalNodes={chartEmployees.length} />
+            <section className="summary-panel pinned-panel" aria-label="Pinned employees">
+              <div className="pinned-head">
+                <h3>Pinned Compare</h3>
+                <span>{pinnedEmployees.length}/6</span>
+              </div>
+              {pinnedEmployees.length === 0 && <p className="pinned-empty">Pin key roles to compare at a glance.</p>}
+              {pinnedEmployees.map((employee) => (
+                <div key={employee.id} className="pinned-card">
+                  <p className="pinned-name">{employee.name}</p>
+                  <p className="pinned-title">{employee.title}</p>
+                  <p className="pinned-meta">{employee.department} - {employee.location}</p>
+                  <div className="pinned-actions">
+                    <button type="button" className="ghost-btn" onClick={() => setSelectedEmployeeId(employee.id)}>
+                      Focus
+                    </button>
+                    <button type="button" className="ghost-btn" onClick={() => togglePinnedEmployee(employee.id)}>
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </section>
             <section className="summary-panel" aria-label="Headcount summary">
               <h3>Department Headcount</h3>
               {Object.entries(countsByDepartment).map(([name, count]) => (
@@ -690,12 +865,35 @@ export default function App() {
         <section className="chart-column">
           <div className="chart-actions">
             <div className="chart-toolbar" aria-label="Zoom controls">
+              <button type="button" onClick={undoEmployeesChange} disabled={!canUndo} aria-label="Undo last employee change">
+                Undo
+              </button>
+              <button type="button" onClick={redoEmployeesChange} disabled={!canRedo} aria-label="Redo last employee change">
+                Redo
+              </button>
               <button type="button" onClick={zoomOut} aria-label="Zoom out">
                 Zoom -
               </button>
               <button type="button" onClick={zoomIn} aria-label="Zoom in">
                 Zoom +
               </button>
+              <label className="toolbar-select" aria-label="Expand or collapse hierarchy by level">
+                <span>Level</span>
+                <select
+                  value={depthLimit ?? "all"}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setDepthLimit(value === "all" ? null : Number(value));
+                  }}
+                >
+                  <option value="all">All Levels</option>
+                  {depthOptions.map((level) => (
+                    <option key={level} value={level}>
+                      Level {level}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <button type="button" onClick={fitView}>
                 Fit View
               </button>
@@ -712,6 +910,9 @@ export default function App() {
                   <button type="button" onClick={() => setIsDepartmentLaneView((current) => !current)}>
                     {isDepartmentLaneView ? "Hierarchical View" : "Department Lanes"}
                   </button>
+                  <button type="button" onClick={() => setShowDepartmentHeatmap((current) => !current)}>
+                    {showDepartmentHeatmap ? "Hide Heatmap" : "Department Heatmap"}
+                  </button>
                   <button type="button" onClick={() => setIsCompactLayout((current) => !current)}>
                     {isCompactLayout ? "Comfort Layout" : "Compact Layout"}
                   </button>
@@ -725,6 +926,13 @@ export default function App() {
               )}
               <button type="button" onClick={downloadPng}>
                 Download PNG
+              </button>
+              <button
+                type="button"
+                onClick={() => selectedEmployeeId && togglePinnedEmployee(selectedEmployeeId)}
+                disabled={!selectedEmployeeId}
+              >
+                {isSelectedPinned ? "Unpin Selected" : "Pin Selected"}
               </button>
               <button type="button" onClick={resetToOriginalDirectory}>
                 Reset Directory
@@ -773,15 +981,16 @@ export default function App() {
                 transition: isDragging ? 'none' : 'transform 0.5s cubic-bezier(0.16, 1, 0.3, 1)'
               }}>
                 <OrgChartManual
-                  employees={visibleEmployees}
+                  employees={chartEmployees}
                   isDepartmentLaneView={isDepartmentLaneView}
+                  showDepartmentHeatmap={showDepartmentHeatmap}
                   selectedEmployeeId={selectedEmployeeId}
                   hoveredEmployeeId={hoveredEmployeeId}
                   onSelect={setSelectedEmployeeId}
                   onHover={setHoveredEmployeeId}
                   onHoverMove={setHoverPosition}
                   zoomScale={zoom}
-                  matchingIds={matchingIds}
+                  matchingIds={chartMatchingIds}
                   onDimensionsChange={setChartDims}
                 />
               </div>

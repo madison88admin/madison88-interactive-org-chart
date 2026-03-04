@@ -12,6 +12,7 @@ import {
 interface OrgChartManualProps {
     employees: Employee[];
     isDepartmentLaneView: boolean;
+    showDepartmentHeatmap?: boolean;
     selectedEmployeeId: string | null;
     hoveredEmployeeId: string | null;
     onSelect: (id: string) => void;
@@ -22,9 +23,18 @@ interface OrgChartManualProps {
     onDimensionsChange?: (dims: { width: number; height: number }) => void;
 }
 
+const departmentHue = (department: string) => {
+    let hash = 0;
+    for (let i = 0; i < department.length; i += 1) {
+        hash = (hash * 31 + department.charCodeAt(i)) % 360;
+    }
+    return hash;
+};
+
 export function OrgChartManual({
     employees,
     isDepartmentLaneView,
+    showDepartmentHeatmap = false,
     selectedEmployeeId,
     hoveredEmployeeId,
     onSelect,
@@ -129,6 +139,48 @@ export function OrgChartManual({
         }
     }, [isDepartmentLaneView, root, nodesArray]);
 
+    const departmentHeatLanes = useMemo(() => {
+        if (!showDepartmentHeatmap || nodesArray.length === 0) {
+            return [];
+        }
+
+        const regions = new Map<string, { left: number; top: number; right: number; bottom: number; count: number }>();
+        nodesArray.forEach((node) => {
+            const department = node.employee.department || "Unassigned";
+            const current = regions.get(department) ?? {
+                left: Infinity,
+                top: Infinity,
+                right: -Infinity,
+                bottom: -Infinity,
+                count: 0
+            };
+            current.left = Math.min(current.left, node.x);
+            current.top = Math.min(current.top, node.y);
+            current.right = Math.max(current.right, node.x + nodeWidth);
+            current.bottom = Math.max(current.bottom, node.y + nodeHeight);
+            current.count += 1;
+            regions.set(department, current);
+        });
+
+        const padding = 20;
+        return Array.from(regions.entries())
+            .map(([department, region]) => {
+                const hue = departmentHue(department);
+                return {
+                    key: `heat-${department}`,
+                    department,
+                    count: region.count,
+                    left: Math.max(0, region.left - padding),
+                    top: Math.max(0, region.top - padding),
+                    width: region.right - region.left + padding * 2,
+                    height: region.bottom - region.top + padding * 2,
+                    background: `hsla(${hue}, 75%, 55%, 0.12)`,
+                    border: `hsla(${hue}, 75%, 68%, 0.5)`
+                };
+            })
+            .sort((left, right) => left.top - right.top);
+    }, [nodeHeight, nodeWidth, nodesArray, showDepartmentHeatmap]);
+
     const canvasWidth = maxX + nodeWidth + 200;
     const canvasHeight = maxY + nodeHeight + 200;
 
@@ -138,6 +190,7 @@ export function OrgChartManual({
 
     return (
         <div
+            className="org-export-root"
             style={{
                 position: "relative",
                 width: `${canvasWidth}px`,
@@ -146,6 +199,20 @@ export function OrgChartManual({
                 transition: "width 0.3s ease, height 0.3s ease"
             }}
         >
+            {departmentHeatLanes.map((lane) => (
+                <div
+                    key={lane.key}
+                    className="dept-heat-lane"
+                    style={{
+                        left: lane.left,
+                        top: lane.top,
+                        width: lane.width,
+                        height: lane.height,
+                        background: lane.background,
+                        borderColor: lane.border
+                    }}
+                />
+            ))}
 
             <svg
                 style={{
@@ -188,6 +255,20 @@ export function OrgChartManual({
                         />
                     </div>
                 </div>
+            ))}
+
+            {departmentHeatLanes.map((lane) => (
+                <span
+                    key={`${lane.key}-label`}
+                    className="dept-heat-label"
+                    style={{
+                        left: lane.left + 10,
+                        top: lane.top + 8,
+                        borderColor: lane.border
+                    }}
+                >
+                    {`${lane.department} (${lane.count})`}
+                </span>
             ))}
 
             {/* 3. Optional: display orphans warning if any detected */}
