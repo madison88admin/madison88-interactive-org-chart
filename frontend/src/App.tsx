@@ -501,6 +501,7 @@ export default function App() {
       const locationValue = input.location.trim();
       const normalizedEmail = input.email.trim().toLowerCase();
       const startDate = input.startDate.trim();
+      const status = input.status;
       const normalizedPhoto = input.photo?.trim() ?? "";
       if (!name || !title || !departmentValue || !locationValue || !normalizedEmail || !startDate) {
         window.alert("Please complete all required employee fields before saving.");
@@ -525,7 +526,7 @@ export default function App() {
         location: locationValue,
         email: normalizedEmail,
         startDate,
-        status: "standard",
+        status,
         managerId: input.managerId,
         photo: normalizedPhoto || generatedAvatarPhoto(name)
       };
@@ -572,7 +573,10 @@ export default function App() {
             startDate,
             status: input.status,
             managerId: input.managerId,
-            photo: normalizedPhoto || employee.photo || generatedAvatarPhoto(name)
+            photo:
+              input.photo !== undefined
+                ? (normalizedPhoto || generatedAvatarPhoto(name))
+                : (employee.photo || generatedAvatarPhoto(name))
           }
           : employee
       )

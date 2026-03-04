@@ -8,6 +8,7 @@ export interface NewEmployeeInput {
   location: string;
   email: string;
   startDate: string;
+  status: Employee["status"];
   managerId: string | null;
   photo?: string;
 }
@@ -41,7 +42,15 @@ const STATUS_LABEL: Record<Employee["status"], string> = {
   enhanced: "Enhanced Title 2026",
   new_hire: "New Hire 2026"
 };
+const STATUS_FORM_OPTIONS: Array<{ value: Employee["status"]; label: string }> = [
+  { value: "promoted", label: "Promoted 2026" },
+  { value: "enhanced", label: "Enhanced title 2026" },
+  { value: "new_hire", label: "New hire 2026" },
+  { value: "standard", label: "Standard role" }
+];
 const MAX_PHOTO_FILE_SIZE = 2 * 1024 * 1024;
+const avatarFallback = (name: string) =>
+  `https://ui-avatars.com/api/?name=${encodeURIComponent(name).replace(/%20/g, "+")}&background=2C5F7C&color=fff`;
 
 const readPhotoAsDataUrl = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
@@ -68,6 +77,7 @@ export function DetailsPanel({
   const [formLocation, setFormLocation] = useState("");
   const [formEmail, setFormEmail] = useState("");
   const [formStartDate, setFormStartDate] = useState("");
+  const [formStatus, setFormStatus] = useState<Employee["status"]>("standard");
   const [formManagerId, setFormManagerId] = useState<string>("__selected__");
   const [formPhoto, setFormPhoto] = useState("");
   const [editName, setEditName] = useState("");
@@ -132,12 +142,21 @@ export function DetailsPanel({
   const reports = directReportIds(employees, selectedEmployee.id)
     .map((id) => employees.find((employee) => employee.id === id))
     .filter((employee): employee is Employee => Boolean(employee));
+  const selectedFallbackPhoto = avatarFallback(selectedEmployee.name);
 
   return (
     <aside className="details-panel">
       {isHoverPreview && <p className="hover-preview-tag">Hover Preview</p>}
       <div className="details-head">
-        <img src={selectedEmployee.photo} alt={selectedEmployee.name} loading="lazy" />
+        <img
+          src={selectedEmployee.photo || selectedFallbackPhoto}
+          alt={selectedEmployee.name}
+          loading="lazy"
+          onError={(event) => {
+            event.currentTarget.onerror = null;
+            event.currentTarget.src = selectedFallbackPhoto;
+          }}
+        />
         <div>
           <h3>{selectedEmployee.name}</h3>
           <p className="detail-subtitle">{selectedEmployee.title}</p>
@@ -202,6 +221,7 @@ export function DetailsPanel({
               setFormLocation(selectedEmployee.location);
               setFormEmail("");
               setFormStartDate(new Date().toISOString().slice(0, 10));
+              setFormStatus("standard");
               setFormManagerId("__selected__");
               setFormPhoto("");
               setShowAddForm(true);
@@ -222,6 +242,7 @@ export function DetailsPanel({
                 location: formLocation.trim(),
                 email: formEmail.trim(),
                 startDate: formStartDate,
+                status: formStatus,
                 managerId,
                 photo: formPhoto.trim()
               });
@@ -231,6 +252,7 @@ export function DetailsPanel({
               setFormLocation("");
               setFormEmail("");
               setFormStartDate("");
+              setFormStatus("standard");
               setFormManagerId("__selected__");
               setFormPhoto("");
               setShowAddForm(false);
@@ -267,6 +289,16 @@ export function DetailsPanel({
               <input type="date" value={formStartDate} onChange={(event) => setFormStartDate(event.target.value)} required />
             </label>
             <label className="form-field">
+              <span>Status</span>
+              <select value={formStatus} onChange={(event) => setFormStatus(event.target.value as Employee["status"])}>
+                {STATUS_FORM_OPTIONS.map((statusOption) => (
+                  <option key={statusOption.value} value={statusOption.value}>
+                    {statusOption.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="form-field">
               <span>Photo</span>
               <div className="photo-input-wrap">
                 <div className="form-photo-preview">
@@ -289,9 +321,19 @@ export function DetailsPanel({
                       picker.value = "";
                     }}
                   />
+                  <div className="photo-input-actions">
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      disabled={!formPhoto}
+                      onClick={() => setFormPhoto("")}
+                    >
+                      Remove photo
+                    </button>
+                  </div>
                 </div>
               </div>
-              <small className="form-note form-photo-note">Optional. Upload JPG/PNG/WebP up to 2 MB, or paste an image URL.</small>
+              <small className="form-note form-photo-note">Optional. Upload JPG/PNG/WebP up to 2 MB, paste an image URL, or remove photo to use default avatar.</small>
             </label>
             <label className="form-field">
               <span>Manager</span>
@@ -322,6 +364,7 @@ export function DetailsPanel({
                   setFormLocation("");
                   setFormEmail("");
                   setFormStartDate("");
+                  setFormStatus("standard");
                   setFormManagerId("__selected__");
                   setFormPhoto("");
                 }}
@@ -431,17 +474,28 @@ export function DetailsPanel({
                       picker.value = "";
                     }}
                   />
+                  <div className="photo-input-actions">
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      disabled={!editPhoto}
+                      onClick={() => setEditPhoto("")}
+                    >
+                      Remove photo
+                    </button>
+                  </div>
                 </div>
               </div>
-              <small className="form-note form-photo-note">Upload a new image or keep the existing one.</small>
+              <small className="form-note form-photo-note">Upload a new image, keep existing, or remove photo to use default avatar.</small>
             </label>
             <label className="form-field">
               <span>Status</span>
               <select value={editStatus} onChange={(event) => setEditStatus(event.target.value as Employee["status"])}>
-                <option value="standard">Standard</option>
-                <option value="promoted">Promoted</option>
-                <option value="enhanced">Enhanced</option>
-                <option value="new_hire">New Hire</option>
+                {STATUS_FORM_OPTIONS.map((statusOption) => (
+                  <option key={statusOption.value} value={statusOption.value}>
+                    {statusOption.label}
+                  </option>
+                ))}
               </select>
             </label>
             <label className="form-field">

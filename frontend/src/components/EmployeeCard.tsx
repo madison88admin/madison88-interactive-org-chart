@@ -6,6 +6,8 @@ const STATUS_LABEL: Record<EmployeeStatus, string> = {
   enhanced: "Enhanced Title 2026",
   new_hire: "New Hire 2026"
 };
+const avatarFallback = (name: string) =>
+  `https://ui-avatars.com/api/?name=${encodeURIComponent(name).replace(/%20/g, "+")}&background=2C5F7C&color=fff`;
 
 interface EmployeeCardProps {
   employee: Employee;
@@ -31,6 +33,7 @@ export function EmployeeCard({
   const statusClass = employee.status === "standard" ? "" : `status-${employee.status}`;
   const isLowZoom = compact && zoomScale < 0.5;
   const isVeryLowZoom = compact && zoomScale < 0.4;
+  const fallbackPhoto = avatarFallback(employee.name);
 
   return (
     <button
@@ -44,7 +47,16 @@ export function EmployeeCard({
       onBlur={() => onHover?.(null)}
       aria-label={`View ${employee.name}`}
     >
-      <img src={employee.photo} alt={employee.name} className="employee-photo" loading="lazy" />
+      <img
+        src={employee.photo || fallbackPhoto}
+        alt={employee.name}
+        className="employee-photo"
+        loading="lazy"
+        onError={(event) => {
+          event.currentTarget.onerror = null;
+          event.currentTarget.src = fallbackPhoto;
+        }}
+      />
       <div className="employee-content">
         <h3>{employee.name}</h3>
         {!isVeryLowZoom && <p className="employee-title">{employee.title}</p>}
