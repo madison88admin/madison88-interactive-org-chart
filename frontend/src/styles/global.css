@@ -477,15 +477,15 @@ body {
 }
 
 .employee-card.status-promoted {
-  border-left: 6px solid var(--color-promoted);
+  border-left: none;
 }
 
 .employee-card.status-enhanced {
-  border-left: 6px solid var(--color-enhanced);
+  border-left: none;
 }
 
 .employee-card.status-new_hire {
-  border-left: 6px solid var(--color-new-hire);
+  border-left: none;
 }
 
 .employee-card.is-compact .employee-title,
@@ -1994,8 +1994,8 @@ body {
 
 .regional-roles-editor {
   display: grid;
-  gap: 0.4rem;
-  padding: 0.5rem;
+  gap: 0.46rem;
+  padding: 0.56rem;
   border-radius: 0.72rem;
   border: 1px solid rgba(146, 197, 220, 0.35);
   background: rgba(15, 39, 56, 0.42);
@@ -2003,15 +2003,28 @@ body {
 
 .regional-role-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr) auto;
-  gap: 0.36rem;
+  grid-template-columns: 1fr;
+  gap: 0.34rem;
   align-items: center;
+  padding: 0.34rem;
+  border-radius: 0.62rem;
+  border: 1px solid rgba(146, 197, 220, 0.26);
+  background: rgba(9, 28, 42, 0.34);
+}
+
+.regional-role-row input,
+.regional-role-row select {
+  width: 100%;
+  min-width: 0;
 }
 
 .regional-role-row .ghost-btn {
-  min-height: 45px;
+  width: 100%;
+  min-height: 42px;
   margin: 0;
-  white-space: nowrap;
+  white-space: normal;
+  text-align: center;
+  justify-content: center;
 }
 
 .photo-input-wrap {
@@ -2021,9 +2034,14 @@ body {
   align-items: start;
 }
 
+.regional-roles-editor > .ghost-btn {
+  width: 100%;
+  text-align: center;
+}
+
 @media (max-width: 1200px) {
-  .regional-role-row {
-    grid-template-columns: 1fr;
+  .regional-roles-editor {
+    padding: 0.5rem;
   }
 }
 
