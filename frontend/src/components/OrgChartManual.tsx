@@ -3,15 +3,18 @@ import type { Employee } from "../utils/org";
 import { EmployeeCard } from "./EmployeeCard";
 import {
     buildHierarchicalTree,
+    COMFORT_LAYOUT_CONFIG,
+    COMPACT_LAYOUT_CONFIG,
     calculateDepartmentLaneLayout,
     calculateTreeLayout,
-    DEFAULT_LAYOUT_CONFIG,
+    type LayoutConfig,
     type LayoutNode
 } from "../utils/layout";
 
 interface OrgChartManualProps {
     employees: Employee[];
     isDepartmentLaneView: boolean;
+    isCompactLayout?: boolean;
     showDepartmentHeatmap?: boolean;
     selectedEmployeeId: string | null;
     hoveredEmployeeId: string | null;
@@ -34,6 +37,7 @@ const departmentHue = (department: string) => {
 export function OrgChartManual({
     employees,
     isDepartmentLaneView,
+    isCompactLayout = true,
     showDepartmentHeatmap = false,
     selectedEmployeeId,
     hoveredEmployeeId,
@@ -44,6 +48,8 @@ export function OrgChartManual({
     matchingIds,
     onDimensionsChange
 }: OrgChartManualProps) {
+    const layoutConfig: LayoutConfig = isCompactLayout ? COMPACT_LAYOUT_CONFIG : COMFORT_LAYOUT_CONFIG;
+
     // 1. Build and calculate layout based on mode
     const { root, orphans, nodesArray, maxX, maxY } = useMemo(() => {
         const { root, orphans } = buildHierarchicalTree(employees);
@@ -53,7 +59,7 @@ export function OrgChartManual({
 
         let nodesArray: LayoutNode[] = [];
         if (isDepartmentLaneView) {
-            calculateDepartmentLaneLayout(root, DEFAULT_LAYOUT_CONFIG);
+            calculateDepartmentLaneLayout(root, layoutConfig);
             // Flatten tree for lane view
             const flatten = (n: LayoutNode) => {
                 nodesArray.push(n);
@@ -62,7 +68,7 @@ export function OrgChartManual({
             flatten(root);
         } else {
             // Hierarchical Tree Layout
-            calculateTreeLayout(root, DEFAULT_LAYOUT_CONFIG);
+            calculateTreeLayout(root, layoutConfig);
             const flatten = (n: LayoutNode) => {
                 nodesArray.push(n);
                 n.children.forEach(flatten);
@@ -79,13 +85,13 @@ export function OrgChartManual({
         });
 
         return { root, orphans, nodesArray, maxX, maxY };
-    }, [employees, isDepartmentLaneView]);
+    }, [employees, isDepartmentLaneView, layoutConfig]);
 
     if (nodesArray.length === 0) {
         return <p className="empty-state">No employees matching the current filters.</p>;
     }
 
-    const { nodeWidth, nodeHeight, levelGap } = DEFAULT_LAYOUT_CONFIG;
+    const { nodeWidth, nodeHeight, levelGap } = layoutConfig;
 
     // Render SVG Edge connecting parent to child using orthogonal routing
     const renderEdge = (source: LayoutNode, target: LayoutNode) => {
@@ -247,7 +253,7 @@ export function OrgChartManual({
                             employee={node.employee}
                             selected={node.id === selectedEmployeeId || node.id === hoveredEmployeeId}
                             isMatch={matchingIds ? matchingIds.has(node.id) : true}
-                            compact={false}
+                            compact={isCompactLayout}
                             zoomScale={zoomScale}
                             onClick={(id) => onSelect(id)}
                             onHover={onHover}

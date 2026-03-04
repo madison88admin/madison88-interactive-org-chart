@@ -1049,6 +1049,7 @@ export default function App() {
                   <OrgChartManual
                     employees={chartEmployees}
                     isDepartmentLaneView={isDepartmentLaneView}
+                    isCompactLayout={isCompactLayout}
                     showDepartmentHeatmap={showDepartmentHeatmap}
                     selectedEmployeeId={selectedEmployeeId}
                     hoveredEmployeeId={hoveredEmployeeId}

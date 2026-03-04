@@ -49,15 +49,52 @@ const STATUS_FORM_OPTIONS: Array<{ value: Employee["status"]; label: string }> =
   { value: "standard", label: "Standard role" }
 ];
 const MAX_PHOTO_FILE_SIZE = 2 * 1024 * 1024;
+const STANDARD_PHOTO_SIZE = 320;
 const avatarFallback = (name: string) =>
   `https://ui-avatars.com/api/?name=${encodeURIComponent(name).replace(/%20/g, "+")}&background=2C5F7C&color=fff`;
 
-const readPhotoAsDataUrl = (file: File): Promise<string> =>
+const normalizePhotoFile = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = () => reject(new Error("Unable to read image file."));
-    reader.readAsDataURL(file);
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = STANDARD_PHOTO_SIZE;
+      canvas.height = STANDARD_PHOTO_SIZE;
+      const context = canvas.getContext("2d");
+
+      if (!context) {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error("Unable to process image."));
+        return;
+      }
+
+      // Fit and crop image to a fixed square so profile pictures remain consistent.
+      const scale = Math.max(
+        STANDARD_PHOTO_SIZE / image.naturalWidth,
+        STANDARD_PHOTO_SIZE / image.naturalHeight
+      );
+      const drawWidth = image.naturalWidth * scale;
+      const drawHeight = image.naturalHeight * scale;
+      const offsetX = (STANDARD_PHOTO_SIZE - drawWidth) / 2;
+      const offsetY = (STANDARD_PHOTO_SIZE - drawHeight) / 2;
+
+      context.fillStyle = "#d9edf9";
+      context.fillRect(0, 0, STANDARD_PHOTO_SIZE, STANDARD_PHOTO_SIZE);
+      context.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
+
+      const normalizedDataUrl = canvas.toDataURL("image/webp", 0.9);
+      URL.revokeObjectURL(objectUrl);
+      resolve(normalizedDataUrl);
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Unable to load image file."));
+    };
+
+    image.src = objectUrl;
   });
 
 export function DetailsPanel({
@@ -122,7 +159,7 @@ export function DetailsPanel({
       return;
     }
     try {
-      const photoDataUrl = await readPhotoAsDataUrl(file);
+      const photoDataUrl = await normalizePhotoFile(file);
       setPhoto(photoDataUrl);
     } catch {
       window.alert("Unable to load the selected image.");
@@ -333,7 +370,7 @@ export function DetailsPanel({
                   </div>
                 </div>
               </div>
-              <small className="form-note form-photo-note">Optional. Upload JPG/PNG/WebP up to 2 MB, paste an image URL, or remove photo to use default avatar.</small>
+              <small className="form-note form-photo-note">Optional. Upload JPG/PNG/WebP up to 2 MB. Uploaded photos are auto-fit to the system size.</small>
             </label>
             <label className="form-field">
               <span>Manager</span>
@@ -486,7 +523,7 @@ export function DetailsPanel({
                   </div>
                 </div>
               </div>
-              <small className="form-note form-photo-note">Upload a new image, keep existing, or remove photo to use default avatar.</small>
+              <small className="form-note form-photo-note">Upload a new image, keep existing, or remove photo to use default avatar. Uploaded photos are auto-fit to the system size.</small>
             </label>
             <label className="form-field">
               <span>Status</span>

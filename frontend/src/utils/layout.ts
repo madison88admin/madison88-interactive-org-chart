@@ -14,6 +14,20 @@ export const DEFAULT_LAYOUT_CONFIG: LayoutConfig = {
     nodeHeight: 100
 };
 
+export const COMPACT_LAYOUT_CONFIG: LayoutConfig = {
+    levelGap: 96,
+    siblingGap: 44,
+    nodeWidth: 190,
+    nodeHeight: 92
+};
+
+export const COMFORT_LAYOUT_CONFIG: LayoutConfig = {
+    levelGap: 150,
+    siblingGap: 80,
+    nodeWidth: 232,
+    nodeHeight: 112
+};
+
 export interface LayoutNode {
     id: string;
     employee: Employee;

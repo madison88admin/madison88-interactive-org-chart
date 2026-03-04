@@ -1571,6 +1571,22 @@ body {
   padding: 0.56rem;
 }
 
+.node-shell .employee-card {
+  width: 100%;
+  min-height: 100%;
+  height: 100%;
+}
+
+.node-shell .employee-card.is-compact {
+  padding: 0.46rem;
+  gap: 0.46rem;
+}
+
+.node-shell .employee-card:not(.is-compact) {
+  padding: 0.64rem;
+  gap: 0.66rem;
+}
+
 .employee-card::before {
   display: none;
 }
