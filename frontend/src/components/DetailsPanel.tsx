@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { directReportIds, managerFor, type Employee } from "../utils/org";
+import { directReportIds, managerFor, type Employee, type RegionalRole } from "../utils/org";
 
 export interface NewEmployeeInput {
   name: string;
@@ -10,6 +10,7 @@ export interface NewEmployeeInput {
   startDate: string;
   status: Employee["status"];
   managerId: string | null;
+  regionalRoles?: RegionalRole[];
   photo?: string;
 }
 
@@ -23,6 +24,7 @@ export interface UpdateEmployeeInput {
   startDate: string;
   status: Employee["status"];
   managerId: string | null;
+  regionalRoles?: RegionalRole[];
   photo?: string;
 }
 
@@ -52,8 +54,79 @@ const STATUS_FORM_OPTIONS: Array<{ value: Employee["status"]; label: string }> =
 ];
 const MAX_PHOTO_FILE_SIZE = 2 * 1024 * 1024;
 const STANDARD_PHOTO_SIZE = 320;
+const MANAGER_PLACEHOLDER_VALUES = new Set(["__selected__", "__current__", "__none__"]);
 const avatarFallback = (name: string) =>
   `https://ui-avatars.com/api/?name=${encodeURIComponent(name).replace(/%20/g, "+")}&background=2C5F7C&color=fff`;
+type RegionalRoleDraft = { location: string; title: string; department: string };
+
+const managerMatchesSearch = (employee: Employee, query: string) => {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+  return (
+    employee.name.toLowerCase().includes(normalizedQuery) ||
+    employee.title.toLowerCase().includes(normalizedQuery) ||
+    employee.department.toLowerCase().includes(normalizedQuery)
+  );
+};
+
+const filterManagersWithSelection = (options: Employee[], query: string, selectedValue: string) => {
+  const filtered = options.filter((employee) => managerMatchesSearch(employee, query));
+  if (!query.trim() || MANAGER_PLACEHOLDER_VALUES.has(selectedValue)) {
+    return filtered;
+  }
+  if (filtered.some((employee) => employee.id === selectedValue)) {
+    return filtered;
+  }
+  const selectedEmployee = options.find((employee) => employee.id === selectedValue);
+  if (!selectedEmployee) {
+    return filtered;
+  }
+  return [selectedEmployee, ...filtered];
+};
+
+const normalizeLocationKey = (value: string) => value.trim().toLowerCase();
+
+const sanitizeRegionalRoles = (
+  entries: RegionalRoleDraft[],
+  baseLocation: string,
+  onNotify: (message: string, title?: string) => void
+): RegionalRole[] | null => {
+  const normalizedBaseLocation = normalizeLocationKey(baseLocation);
+  const seenLocation = new Set<string>();
+  const roles: RegionalRole[] = [];
+
+  for (const entry of entries) {
+    const location = entry.location.trim();
+    const title = entry.title.trim();
+    const department = entry.department.trim();
+    const hasAnyValue = Boolean(location || title || department);
+    if (!hasAnyValue) {
+      continue;
+    }
+    if (!location || !title) {
+      onNotify("Each additional position requires both location and title.", "Validation");
+      return null;
+    }
+    const locationKey = normalizeLocationKey(location);
+    if (locationKey === normalizedBaseLocation) {
+      continue;
+    }
+    if (seenLocation.has(locationKey)) {
+      onNotify("Only one additional position is allowed per location.", "Validation");
+      return null;
+    }
+    seenLocation.add(locationKey);
+    roles.push({
+      location,
+      title,
+      ...(department ? { department } : {})
+    });
+  }
+
+  return roles;
+};
 
 const normalizePhotoFile = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
@@ -120,6 +193,8 @@ export function DetailsPanel({
   const [formStartDate, setFormStartDate] = useState("");
   const [formStatus, setFormStatus] = useState<Employee["status"]>("standard");
   const [formManagerId, setFormManagerId] = useState<string>("__selected__");
+  const [formManagerSearch, setFormManagerSearch] = useState("");
+  const [formRegionalRoles, setFormRegionalRoles] = useState<RegionalRoleDraft[]>([]);
   const [formPhoto, setFormPhoto] = useState("");
   const [editName, setEditName] = useState("");
   const [editTitle, setEditTitle] = useState("");
@@ -129,18 +204,38 @@ export function DetailsPanel({
   const [editStartDate, setEditStartDate] = useState("");
   const [editStatus, setEditStatus] = useState<Employee["status"]>("standard");
   const [editManagerId, setEditManagerId] = useState<string>("__current__");
+  const [editManagerSearch, setEditManagerSearch] = useState("");
+  const [editRegionalRoles, setEditRegionalRoles] = useState<RegionalRoleDraft[]>([]);
   const [editPhoto, setEditPhoto] = useState("");
   const isMutatingDisabled = isHoverPreview;
   const locationOptions = useMemo(
     () =>
       Array.from(
         new Set(
-          employees
-            .map((employee) => employee.location?.trim())
+          employees.flatMap((employee) => [
+            employee.location?.trim(),
+            ...(employee.regionalRoles?.map((entry) => entry.location?.trim()) ?? [])
+          ])
             .filter((location): location is string => Boolean(location))
         )
       ).sort((left, right) => left.localeCompare(right)),
     [employees]
+  );
+  const selectedEmployeeId = selectedEmployee?.id ?? "";
+  const managerOptions = useMemo(
+    () =>
+      [...employees]
+        .filter((employee) => employee.id !== selectedEmployeeId)
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    [employees, selectedEmployeeId]
+  );
+  const filteredAddManagerOptions = useMemo(
+    () => filterManagersWithSelection(managerOptions, formManagerSearch, formManagerId),
+    [formManagerId, formManagerSearch, managerOptions]
+  );
+  const filteredEditManagerOptions = useMemo(
+    () => filterManagersWithSelection(managerOptions, editManagerSearch, editManagerId),
+    [editManagerId, editManagerSearch, managerOptions]
   );
 
   useEffect(() => {
@@ -179,10 +274,15 @@ export function DetailsPanel({
     );
   }
 
+  const persistedSelectedEmployee = employees.find((employee) => employee.id === selectedEmployee.id) ?? selectedEmployee;
   const manager = managerFor(employees, selectedEmployee.id);
   const reports = directReportIds(employees, selectedEmployee.id)
     .map((id) => employees.find((employee) => employee.id === id))
-    .filter((employee): employee is Employee => Boolean(employee));
+    .filter((employee): employee is Employee => Boolean(employee))
+    .sort((left, right) => left.name.localeCompare(right.name));
+  const regionalRoles = [...(selectedEmployee.regionalRoles ?? [])]
+    .filter((entry) => entry.location?.trim() && entry.title?.trim())
+    .sort((left, right) => left.location.localeCompare(right.location));
   const selectedFallbackPhoto = avatarFallback(selectedEmployee.name);
 
   return (
@@ -222,6 +322,19 @@ export function DetailsPanel({
           <span>{selectedEmployee.startDate}</span>
         </p>
       </div>
+
+      {regionalRoles.length > 0 && (
+        <section>
+          <h4>Regional Roles</h4>
+          <div className="reports-list">
+            {regionalRoles.map((entry, index) => (
+              <p key={`${entry.location}-${entry.title}-${index}`}>
+                {entry.location}: {entry.department ? `${entry.title} - ${entry.department}` : entry.title}
+              </p>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section>
         <h4>Manager</h4>
@@ -265,6 +378,8 @@ export function DetailsPanel({
               setFormStartDate(new Date().toISOString().slice(0, 10));
               setFormStatus("standard");
               setFormManagerId("__selected__");
+              setFormManagerSearch("");
+              setFormRegionalRoles([]);
               setFormPhoto("");
               setShowAddForm(true);
             }}
@@ -277,6 +392,10 @@ export function DetailsPanel({
             onSubmit={(event) => {
               event.preventDefault();
               const managerId = formManagerId === "__selected__" ? selectedEmployee.id : formManagerId === "__none__" ? null : formManagerId;
+              const regionalRoles = sanitizeRegionalRoles(formRegionalRoles, formLocation, onNotify);
+              if (regionalRoles === null) {
+                return;
+              }
               onAddEmployee({
                 name: formName.trim(),
                 title: formTitle.trim(),
@@ -286,6 +405,7 @@ export function DetailsPanel({
                 startDate: formStartDate,
                 status: formStatus,
                 managerId,
+                regionalRoles,
                 photo: formPhoto.trim()
               });
               setFormName("");
@@ -296,6 +416,8 @@ export function DetailsPanel({
               setFormStartDate("");
               setFormStatus("standard");
               setFormManagerId("__selected__");
+              setFormManagerSearch("");
+              setFormRegionalRoles([]);
               setFormPhoto("");
               setShowAddForm(false);
             }}
@@ -340,6 +462,78 @@ export function DetailsPanel({
                 ))}
               </select>
             </label>
+            <div className="form-field">
+              <span>Double Position by Location</span>
+              <div className="regional-roles-editor">
+                {formRegionalRoles.length === 0 && (
+                  <p className="form-note">Optional. Add another location-specific position.</p>
+                )}
+                {formRegionalRoles.map((entry, index) => (
+                  <div key={`add-role-${index}`} className="regional-role-row">
+                    <select
+                      value={entry.location}
+                      onChange={(event) =>
+                        setFormRegionalRoles((current) =>
+                          current.map((role, roleIndex) =>
+                            roleIndex === index ? { ...role, location: event.target.value } : role
+                          )
+                        )
+                      }
+                    >
+                      <option value="">Select location</option>
+                      {locationOptions.map((locationOption) => (
+                        <option key={locationOption} value={locationOption}>
+                          {locationOption}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      value={entry.title}
+                      onChange={(event) =>
+                        setFormRegionalRoles((current) =>
+                          current.map((role, roleIndex) =>
+                            roleIndex === index ? { ...role, title: event.target.value } : role
+                          )
+                        )
+                      }
+                      placeholder="Position title"
+                    />
+                    <input
+                      value={entry.department}
+                      onChange={(event) =>
+                        setFormRegionalRoles((current) =>
+                          current.map((role, roleIndex) =>
+                            roleIndex === index ? { ...role, department: event.target.value } : role
+                          )
+                        )
+                      }
+                      placeholder="Department (optional)"
+                    />
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      onClick={() =>
+                        setFormRegionalRoles((current) => current.filter((_, roleIndex) => roleIndex !== index))
+                      }
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  onClick={() =>
+                    setFormRegionalRoles((current) => [
+                      ...current,
+                      { location: "", title: "", department: formDepartment.trim() }
+                    ])
+                  }
+                >
+                  Add Double Position
+                </button>
+              </div>
+            </div>
             <label className="form-field">
               <span>Photo</span>
               <div className="photo-input-wrap">
@@ -378,18 +572,28 @@ export function DetailsPanel({
               <small className="form-note form-photo-note">Optional. Upload JPG/PNG/WebP up to 2 MB. Uploaded photos are auto-fit to the system size.</small>
             </label>
             <label className="form-field">
+              <span>Search Manager</span>
+              <input
+                type="search"
+                value={formManagerSearch}
+                onChange={(event) => setFormManagerSearch(event.target.value)}
+                placeholder="Search name, title, department"
+              />
+            </label>
+            <label className="form-field">
               <span>Manager</span>
               <select value={formManagerId} onChange={(event) => setFormManagerId(event.target.value)}>
                 <option value="__selected__">Manager: {selectedEmployee.name}</option>
                 <option value="__none__">No manager (top-level)</option>
-                {employees
-                  .filter((employee) => employee.id !== selectedEmployee.id)
-                  .map((employee) => (
-                    <option key={employee.id} value={employee.id}>
-                      {employee.name}
-                    </option>
-                  ))}
+                {filteredAddManagerOptions.map((employee) => (
+                  <option key={employee.id} value={employee.id}>
+                    {employee.name}
+                  </option>
+                ))}
               </select>
+              {formManagerSearch.trim() && filteredAddManagerOptions.length === 0 && (
+                <small className="form-note">No matching managers found.</small>
+              )}
             </label>
             <div className="add-form-actions">
               <button type="submit" className="link-btn">
@@ -408,6 +612,8 @@ export function DetailsPanel({
                   setFormStartDate("");
                   setFormStatus("standard");
                   setFormManagerId("__selected__");
+                  setFormManagerSearch("");
+                  setFormRegionalRoles([]);
                   setFormPhoto("");
                 }}
               >
@@ -429,15 +635,23 @@ export function DetailsPanel({
             className="link-btn"
             disabled={isMutatingDisabled}
             onClick={() => {
-              setEditName(selectedEmployee.name);
-              setEditTitle(selectedEmployee.title);
-              setEditDepartment(selectedEmployee.department);
-              setEditLocation(selectedEmployee.location);
-              setEditEmail(selectedEmployee.email);
-              setEditStartDate(selectedEmployee.startDate);
-              setEditStatus(selectedEmployee.status);
-              setEditManagerId(selectedEmployee.managerId ?? "__none__");
-              setEditPhoto(selectedEmployee.photo);
+              setEditName(persistedSelectedEmployee.name);
+              setEditTitle(persistedSelectedEmployee.title);
+              setEditDepartment(persistedSelectedEmployee.department);
+              setEditLocation(persistedSelectedEmployee.location);
+              setEditEmail(persistedSelectedEmployee.email);
+              setEditStartDate(persistedSelectedEmployee.startDate);
+              setEditStatus(persistedSelectedEmployee.status);
+              setEditManagerId(persistedSelectedEmployee.managerId ?? "__none__");
+              setEditManagerSearch("");
+              setEditRegionalRoles(
+                (persistedSelectedEmployee.regionalRoles ?? []).map((entry) => ({
+                  location: entry.location,
+                  title: entry.title,
+                  department: entry.department ?? ""
+                }))
+              );
+              setEditPhoto(persistedSelectedEmployee.photo);
               setShowEditForm(true);
             }}
           >
@@ -448,10 +662,14 @@ export function DetailsPanel({
             className="add-employee-form form-template"
             onSubmit={(event) => {
               event.preventDefault();
+              const regionalRoles = sanitizeRegionalRoles(editRegionalRoles, editLocation, onNotify);
+              if (regionalRoles === null) {
+                return;
+              }
               const managerId =
-                editManagerId === "__none__" ? null : editManagerId === "__current__" ? selectedEmployee.managerId : editManagerId;
+                editManagerId === "__none__" ? null : editManagerId === "__current__" ? persistedSelectedEmployee.managerId : editManagerId;
               onUpdateEmployee({
-                id: selectedEmployee.id,
+                id: persistedSelectedEmployee.id,
                 name: editName.trim(),
                 title: editTitle.trim(),
                 department: editDepartment.trim(),
@@ -460,8 +678,11 @@ export function DetailsPanel({
                 startDate: editStartDate,
                 status: editStatus,
                 managerId,
+                regionalRoles,
                 photo: editPhoto.trim()
               });
+              setEditManagerSearch("");
+              setEditRegionalRoles([]);
               setShowEditForm(false);
             }}
           >
@@ -542,25 +763,115 @@ export function DetailsPanel({
                 ))}
               </select>
             </label>
+            <div className="form-field">
+              <span>Double Position by Location</span>
+              <div className="regional-roles-editor">
+                {editRegionalRoles.length === 0 && (
+                  <p className="form-note">Optional. Add another location-specific position.</p>
+                )}
+                {editRegionalRoles.map((entry, index) => (
+                  <div key={`edit-role-${index}`} className="regional-role-row">
+                    <select
+                      value={entry.location}
+                      onChange={(event) =>
+                        setEditRegionalRoles((current) =>
+                          current.map((role, roleIndex) =>
+                            roleIndex === index ? { ...role, location: event.target.value } : role
+                          )
+                        )
+                      }
+                    >
+                      <option value="">Select location</option>
+                      {locationOptions.map((locationOption) => (
+                        <option key={locationOption} value={locationOption}>
+                          {locationOption}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      value={entry.title}
+                      onChange={(event) =>
+                        setEditRegionalRoles((current) =>
+                          current.map((role, roleIndex) =>
+                            roleIndex === index ? { ...role, title: event.target.value } : role
+                          )
+                        )
+                      }
+                      placeholder="Position title"
+                    />
+                    <input
+                      value={entry.department}
+                      onChange={(event) =>
+                        setEditRegionalRoles((current) =>
+                          current.map((role, roleIndex) =>
+                            roleIndex === index ? { ...role, department: event.target.value } : role
+                          )
+                        )
+                      }
+                      placeholder="Department (optional)"
+                    />
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      onClick={() =>
+                        setEditRegionalRoles((current) => current.filter((_, roleIndex) => roleIndex !== index))
+                      }
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  onClick={() =>
+                    setEditRegionalRoles((current) => [
+                      ...current,
+                      { location: "", title: "", department: editDepartment.trim() }
+                    ])
+                  }
+                >
+                  Add Double Position
+                </button>
+              </div>
+            </div>
+            <label className="form-field">
+              <span>Search Manager</span>
+              <input
+                type="search"
+                value={editManagerSearch}
+                onChange={(event) => setEditManagerSearch(event.target.value)}
+                placeholder="Search name, title, department"
+              />
+            </label>
             <label className="form-field">
               <span>Manager</span>
               <select value={editManagerId} onChange={(event) => setEditManagerId(event.target.value)}>
                 <option value="__current__">Keep current manager</option>
                 <option value="__none__">No manager (top-level)</option>
-                {employees
-                  .filter((employee) => employee.id !== selectedEmployee.id)
-                  .map((employee) => (
-                    <option key={employee.id} value={employee.id}>
-                      {employee.name}
-                    </option>
-                  ))}
+                {filteredEditManagerOptions.map((employee) => (
+                  <option key={employee.id} value={employee.id}>
+                    {employee.name}
+                  </option>
+                ))}
               </select>
+              {editManagerSearch.trim() && filteredEditManagerOptions.length === 0 && (
+                <small className="form-note">No matching managers found.</small>
+              )}
             </label>
             <div className="add-form-actions">
               <button type="submit" className="link-btn">
                 Save Changes
               </button>
-              <button type="button" className="link-btn" onClick={() => setShowEditForm(false)}>
+              <button
+                type="button"
+                className="link-btn"
+                onClick={() => {
+                  setEditManagerSearch("");
+                  setEditRegionalRoles([]);
+                  setShowEditForm(false);
+                }}
+              >
                 Cancel
               </button>
             </div>

@@ -22,11 +22,18 @@ export interface Employee {
   title: string;
   department: string;
   location: string;
+  regionalRoles?: RegionalRole[];
   email: string;
   startDate: string;
   status: EmployeeStatus;
   managerId: string | null;
   photo: string;
+}
+
+export interface RegionalRole {
+  location: string;
+  title: string;
+  department?: string;
 }
 
 export interface EmployeeNode {
@@ -74,9 +81,66 @@ export const LOCATIONS = [
 
 export type ViewMode = "full" | "department" | "location" | "individual";
 
+const normalizeLocationKey = (value: string) => value.trim().toLowerCase();
+
+const regionalRoleForLocation = (employee: Employee, location: string | null) => {
+  if (!location) {
+    return null;
+  }
+  const targetKey = normalizeLocationKey(location);
+  return (
+    employee.regionalRoles?.find((entry) => normalizeLocationKey(entry.location) === targetKey) ?? null
+  );
+};
+
 const includesTerm = (employee: Employee, term: string) => {
-  const value = `${employee.name} ${employee.title} ${employee.department}`.toLowerCase();
+  const regionalContent =
+    employee.regionalRoles
+      ?.map((entry) => `${entry.location} ${entry.title} ${entry.department ?? ""}`)
+      .join(" ") ?? "";
+  const value = `${employee.name} ${employee.title} ${employee.department} ${regionalContent}`.toLowerCase();
   return value.includes(term.toLowerCase());
+};
+
+export const employeeMatchesLocation = (employee: Employee, location: string | null) => {
+  if (!location) {
+    return true;
+  }
+  const targetKey = normalizeLocationKey(location);
+  if (normalizeLocationKey(employee.location) === targetKey) {
+    return true;
+  }
+  return (employee.regionalRoles ?? []).some((entry) => normalizeLocationKey(entry.location) === targetKey);
+};
+
+export const resolveEmployeeForLocation = (employee: Employee, location: string | null): Employee => {
+  const regionalRole = regionalRoleForLocation(employee, location);
+  if (!regionalRole) {
+    return employee;
+  }
+  return {
+    ...employee,
+    title: regionalRole.title?.trim() || employee.title,
+    department: regionalRole.department?.trim() || employee.department,
+    location: regionalRole.location?.trim() || employee.location
+  };
+};
+
+export const allEmployeeLocations = (employees: Employee[]) => {
+  const set = new Set<string>();
+  employees.forEach((employee) => {
+    const base = employee.location?.trim();
+    if (base) {
+      set.add(base);
+    }
+    (employee.regionalRoles ?? []).forEach((entry) => {
+      const regionalLocation = entry.location?.trim();
+      if (regionalLocation) {
+        set.add(regionalLocation);
+      }
+    });
+  });
+  return Array.from(set).sort((left, right) => left.localeCompare(right));
 };
 
 const collectAncestors = (id: string, map: Map<string, Employee>, include: Set<string>) => {
@@ -355,7 +419,7 @@ export const filterEmployees = (
       return false;
     }
 
-    if (options.viewMode === "location" && options.location && employee.location !== options.location) {
+    if (options.viewMode === "location" && options.location && !employeeMatchesLocation(employee, options.location)) {
       return false;
     }
 

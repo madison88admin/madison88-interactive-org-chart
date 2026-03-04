@@ -11,8 +11,10 @@ import { OrgChartManual } from "./components/OrgChartManual";
 import type { NewEmployeeInput } from "./components/DetailsPanel";
 import type { UpdateEmployeeInput } from "./components/DetailsPanel";
 import {
+  allEmployeeLocations,
   employeeCountsByDepartment,
   employeeCountsByRoleLevel,
+  resolveEmployeeForLocation,
   filterEmployees,
   getRoleLevel,
   ensureConnectedHierarchy,
@@ -30,6 +32,34 @@ const EMPLOYEES_STORAGE_KEY = "madison88_employees_v1";
 const HISTORY_LIMIT = 40;
 const generatedAvatarPhoto = (name: string) =>
   `https://ui-avatars.com/api/?name=${encodeURIComponent(name).replace(/%20/g, "+")}&background=2C5F7C&color=fff`;
+const normalizeLocationKey = (value: string) => value.trim().toLowerCase();
+const normalizeRegionalRoles = (roles: Employee["regionalRoles"], baseLocation: string): Employee["regionalRoles"] => {
+  if (!roles || roles.length === 0) {
+    return undefined;
+  }
+  const baseLocationKey = normalizeLocationKey(baseLocation);
+  const seenLocation = new Set<string>();
+  const normalized = roles.reduce<NonNullable<Employee["regionalRoles"]>>((acc, role) => {
+    const location = role.location.trim();
+    const title = role.title.trim();
+    const department = role.department?.trim() ?? "";
+    if (!location || !title) {
+      return acc;
+    }
+    const locationKey = normalizeLocationKey(location);
+    if (locationKey === baseLocationKey || seenLocation.has(locationKey)) {
+      return acc;
+    }
+    seenLocation.add(locationKey);
+    acc.push({
+      location,
+      title,
+      ...(department ? { department } : {})
+    });
+    return acc;
+  }, []);
+  return normalized.length > 0 ? normalized : undefined;
+};
 type ModalMode = "info" | "confirm";
 type ModalTone = "primary" | "danger";
 
@@ -82,6 +112,11 @@ export default function App() {
   const [quickFilters, setQuickFilters] = useState<EmployeeStatus[]>([]);
   const [executiveOnly, setExecutiveOnly] = useState(false);
   const [roleLevel, setRoleLevel] = useState<RoleLevel | null>(null);
+  const roleLocationContext = viewMode === "location" ? location : null;
+  const contextualEmployees = useMemo(
+    () => normalizedEmployees.map((employee) => resolveEmployeeForLocation(employee, roleLocationContext)),
+    [normalizedEmployees, roleLocationContext]
+  );
   const [isCompactLayout, setIsCompactLayout] = useState(true);
   const [isDepartmentLaneView, setIsDepartmentLaneView] = useState(false);
   const [showSidePanels, setShowSidePanels] = useState(true);
@@ -245,22 +280,22 @@ export default function App() {
   const zoomPercent = Math.round(zoom * 100);
   const canUndo = !isReadOnlyView && historyPast.length > 0;
   const canRedo = !isReadOnlyView && historyFuture.length > 0;
-  const departments = useMemo(() => Array.from(new Set(normalizedEmployees.map((employee) => employee.department))).sort(), [normalizedEmployees]);
-  const locations = useMemo(() => Array.from(new Set(normalizedEmployees.map((employee) => employee.location))).sort(), [normalizedEmployees]);
+  const departments = useMemo(() => Array.from(new Set(contextualEmployees.map((employee) => employee.department))).sort(), [contextualEmployees]);
+  const locations = useMemo(() => allEmployeeLocations(normalizedEmployees), [normalizedEmployees]);
   const statusCounts = useMemo(
     () =>
-      normalizedEmployees.reduce<Record<EmployeeStatus, number>>(
+      contextualEmployees.reduce<Record<EmployeeStatus, number>>(
         (acc, employee) => {
           acc[employee.status] += 1;
           return acc;
         },
         { standard: 0, promoted: 0, enhanced: 0, new_hire: 0 }
       ),
-    [normalizedEmployees]
+    [contextualEmployees]
   );
   const roleLevelCounts = useMemo(
     () =>
-      normalizedEmployees.reduce<Record<RoleLevel, number>>(
+      contextualEmployees.reduce<Record<RoleLevel, number>>(
         (acc, employee) => {
           const level = getRoleLevel(employee.title);
           acc[level] += 1;
@@ -268,11 +303,11 @@ export default function App() {
         },
         { CEO: 0, President: 0, VP: 0, Director: 0, "Sr. Manager": 0, Manager: 0, "Assoc. Manager": 0, Supervisor: 0, "Sr. Specialist": 0, Specialist: 0, Staff: 0, "Assoc. Staff": 0 }
       ),
-    [normalizedEmployees]
+    [contextualEmployees]
   );
   const executiveCount = useMemo(
-    () => normalizedEmployees.filter((employee) => isExecutiveEmployee(employee)).length,
-    [normalizedEmployees]
+    () => contextualEmployees.filter((employee) => isExecutiveEmployee(employee)).length,
+    [contextualEmployees]
   );
 
   const [chartDims, setChartDims] = useState({ width: 2000, height: 1000 });
@@ -288,7 +323,7 @@ export default function App() {
 
   const { employees: visibleEmployees, matchingIds } = useMemo(
     () =>
-      filterEmployees(normalizedEmployees, {
+      filterEmployees(contextualEmployees, {
         viewMode,
         department,
         location,
@@ -300,7 +335,7 @@ export default function App() {
         // Keep reporting chain visible during filtering so the CEO/root context never disappears.
         showAncestors: true
       }),
-    [normalizedEmployees, viewMode, department, location, quickFilters, executiveOnly, roleLevel, searchQuery, selectedEmployeeId, activeFilterCount]
+    [contextualEmployees, viewMode, department, location, quickFilters, executiveOnly, roleLevel, searchQuery, selectedEmployeeId, activeFilterCount]
   );
 
   const { depthById, maxVisibleDepth } = useMemo(() => {
@@ -367,13 +402,13 @@ export default function App() {
   const pinnedEmployees = useMemo(
     () =>
       pinnedEmployeeIds
-        .map((id) => normalizedEmployees.find((employee) => employee.id === id))
+        .map((id) => contextualEmployees.find((employee) => employee.id === id))
         .filter((employee): employee is Employee => Boolean(employee)),
-    [pinnedEmployeeIds, normalizedEmployees]
+    [contextualEmployees, pinnedEmployeeIds]
   );
   const isSelectedPinned = Boolean(selectedEmployeeId && pinnedEmployeeIds.includes(selectedEmployeeId));
 
-  const suggestions = useMemo(() => searchSuggestions(normalizedEmployees, searchQuery), [normalizedEmployees, searchQuery]);
+  const suggestions = useMemo(() => searchSuggestions(contextualEmployees, searchQuery), [contextualEmployees, searchQuery]);
 
   const countsByDepartment = useMemo(() => employeeCountsByDepartment(visibleEmployees), [visibleEmployees]);
   const countsByRoleLevel = useMemo(() => employeeCountsByRoleLevel(visibleEmployees), [visibleEmployees]);
@@ -701,6 +736,7 @@ export default function App() {
       const startDate = input.startDate.trim();
       const status = input.status;
       const normalizedPhoto = input.photo?.trim() ?? "";
+      const normalizedRegionalRoles = normalizeRegionalRoles(input.regionalRoles, locationValue);
       if (!name || !title || !departmentValue || !locationValue || !normalizedEmail || !startDate) {
         showInfoModal("Please complete all required employee fields before saving.", "Validation");
         return;
@@ -726,6 +762,7 @@ export default function App() {
         startDate,
         status,
         managerId: input.managerId,
+        regionalRoles: normalizedRegionalRoles,
         photo: normalizedPhoto || generatedAvatarPhoto(name)
       };
 
@@ -746,6 +783,7 @@ export default function App() {
     const normalizedEmail = input.email.trim().toLowerCase();
     const startDate = input.startDate.trim();
     const normalizedPhoto = input.photo?.trim() ?? "";
+    const normalizedRegionalRoles = normalizeRegionalRoles(input.regionalRoles, locationValue);
     if (!name || !title || !departmentValue || !locationValue || !normalizedEmail || !startDate) {
       showInfoModal("Please complete all required employee fields before saving.", "Validation");
       return;
@@ -774,6 +812,7 @@ export default function App() {
             startDate,
             status: input.status,
             managerId: input.managerId,
+            regionalRoles: normalizedRegionalRoles,
             photo:
               input.photo !== undefined
                 ? (normalizedPhoto || generatedAvatarPhoto(name))
@@ -1361,7 +1400,7 @@ export default function App() {
         />
       </main>
       {hoveredEmployee && hoverPosition && (
-        <HoverTooltip employee={hoveredEmployee} employees={normalizedEmployees} position={hoverPosition} />
+        <HoverTooltip employee={hoveredEmployee} employees={contextualEmployees} position={hoverPosition} />
       )}
       {modalState.open && (
         <div className="system-modal-backdrop" onClick={closeSystemModal}>

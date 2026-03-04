@@ -98,9 +98,16 @@
     {
         "id":  "009",
         "name":  "CHRIS CANTASANO",
-        "title":  "Chief Financial Officer (M88 LLC) / President (M88 Business Solutions Asia Inc.)",
+        "title":  "Chief Financial Officer (M88 LLC)",
         "department":  "Executive",
         "location":  "USA",
+        "regionalRoles":  [
+                              {
+                                  "location":  "Manila",
+                                  "title":  "President (M88 Business Solutions Asia Inc.)",
+                                  "department":  "Executive"
+                              }
+                          ],
         "email":  "chris.cantasano@madison88.com",
         "startDate":  "2024-01-01",
         "status":  "standard",

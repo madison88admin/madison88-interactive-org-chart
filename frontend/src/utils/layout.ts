@@ -11,21 +11,21 @@ export const DEFAULT_LAYOUT_CONFIG: LayoutConfig = {
     levelGap: 120,
     siblingGap: 60,
     nodeWidth: 210,
-    nodeHeight: 100
+    nodeHeight: 116
 };
 
 export const COMPACT_LAYOUT_CONFIG: LayoutConfig = {
-    levelGap: 96,
-    siblingGap: 44,
-    nodeWidth: 190,
-    nodeHeight: 92
+    levelGap: 104,
+    siblingGap: 52,
+    nodeWidth: 210,
+    nodeHeight: 122
 };
 
 export const COMFORT_LAYOUT_CONFIG: LayoutConfig = {
     levelGap: 150,
     siblingGap: 80,
-    nodeWidth: 232,
-    nodeHeight: 112
+    nodeWidth: 236,
+    nodeHeight: 140
 };
 
 export interface LayoutNode {
