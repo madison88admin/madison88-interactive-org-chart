@@ -30,7 +30,6 @@ export function SearchBar({ query, suggestions, onChange, onClear, onSelectSugge
       <label htmlFor="global-search" className="sr-only">
         Search employees
       </label>
-      <p className="search-label">Quick Search</p>
       <input
         id="global-search"
         value={query}
@@ -49,7 +48,6 @@ export function SearchBar({ query, suggestions, onChange, onClear, onSelectSugge
         autoComplete="off"
       />
       <div className="search-actions">
-        <span>Press F to focus</span>
         {query && (
           <button type="button" className="ghost-btn" onClick={onClear}>
             Clear

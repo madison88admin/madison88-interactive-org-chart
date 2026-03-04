@@ -27,7 +27,27 @@ interface FilterPanelProps {
 }
 
 export function FilterPanel(props: FilterPanelProps) {
-  const readonlyMode = props.readonlyMode ?? false;
+  const activeScope = props.viewMode === "location" ? "regional" : props.viewMode === "department" ? "departmental" : "global";
+
+  const activateGlobalScope = () => {
+    props.onResetAll();
+    props.onViewMode("full");
+  };
+
+  const activateRegionalScope = () => {
+    props.onResetAll();
+    const preferredLocation = props.location ?? props.locations[0] ?? null;
+    props.onLocation(preferredLocation);
+    props.onViewMode("location");
+  };
+
+  const activateDepartmentalScope = () => {
+    props.onResetAll();
+    const preferredDepartment = props.department ?? props.departments[0] ?? null;
+    props.onDepartment(preferredDepartment);
+    props.onViewMode("department");
+  };
+
   return (
     <div className="filter-panel">
       <div className="active-filters-bar">
@@ -38,142 +58,30 @@ export function FilterPanel(props: FilterPanelProps) {
       </div>
 
       <div className="filter-group">
-        <h3>Quick Start</h3>
-        <p className="group-hint">Choose a preset to jump into the org view faster.</p>
+        <h3>Chart Scope</h3>
+        <p className="group-hint">Filter by org scope only: Global, Regional, or Departmental.</p>
         <div className="chip-grid">
-          <button type="button" className="chip" onClick={props.onPresetLeadership}>
-            Leadership
+          <button type="button" className={`chip ${activeScope === "global" ? "active" : ""}`} onClick={activateGlobalScope}>
+            Global
           </button>
-          <button type="button" className="chip" onClick={props.onPresetDepartment}>
-            Department
+          <button type="button" className={`chip ${activeScope === "regional" ? "active" : ""}`} onClick={activateRegionalScope}>
+            Regional
           </button>
-          <button type="button" className="chip" onClick={props.onPresetAllEmployees}>
-            All Employees
-          </button>
-        </div>
-      </div>
-      {!readonlyMode && (
-        <div className="filter-group">
-          <h3>View</h3>
-          <div className="chip-grid">
-            {(["full", "department", "location", "individual"] as const).map((mode) => (
-              <button
-                type="button"
-                key={mode}
-                className={`chip ${props.viewMode === mode ? "active" : ""}`}
-                onClick={() => props.onViewMode(mode)}
-              >
-                {mode}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {!readonlyMode && (
-        <div className="filter-group">
-          <h3>2026 Quick Filters</h3>
-        <div className="chip-grid">
-          {[
-            ["promoted", "Promoted"],
-            ["new_hire", "New Hires"],
-            ["enhanced", "Enhanced Titles"]
-          ].map(([status, label]) => {
-            const typedStatus = status as EmployeeStatus;
-            const count = props.statusCounts[typedStatus] ?? 0;
-            const isActive = props.quickFilters.includes(typedStatus);
-            return (
-              <button
-                type="button"
-                key={status}
-                className={`chip ${isActive ? "active" : ""}`}
-                onClick={() => props.onToggleStatus(typedStatus)}
-                disabled={!isActive && count === 0}
-                aria-disabled={!isActive && count === 0}
-                title={!isActive && count === 0 ? "No employees available for this filter" : undefined}
-              >
-                {`${label} (${count})`}
-              </button>
-            );
-          })}
-            <button
-              type="button"
-              className={`chip ${props.executiveOnly ? "active" : ""}`}
-              onClick={props.onToggleExecutive}
-              disabled={!props.executiveOnly && props.executiveCount === 0}
-              aria-disabled={!props.executiveOnly && props.executiveCount === 0}
-              title={!props.executiveOnly && props.executiveCount === 0 ? "No executives available for this filter" : undefined}
-            >
-              {`Executives Only (${props.executiveCount})`}
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="filter-group">
-        <h3>Role Level</h3>
-        <div className="chip-grid">
           <button
             type="button"
-            className={`chip ${props.roleLevel === null ? "active" : ""}`}
-            onClick={() => props.onRoleLevel(null)}
+            className={`chip ${activeScope === "departmental" ? "active" : ""}`}
+            onClick={activateDepartmentalScope}
           >
-            All
+            Departmental
           </button>
-          {(["CEO", "President", "VP", "Director", "Sr. Manager", "Manager", "Assoc. Manager", "Supervisor", "Sr. Specialist", "Specialist", "Staff", "Assoc. Staff"] as const).map((level) => {
-              const count = props.roleLevelCounts[level] ?? 0;
-              const isActive = props.roleLevel === level;
-              return (
-                <button
-                  type="button"
-                  key={level}
-                  className={`chip ${isActive ? "active" : ""}`}
-                  onClick={() => props.onRoleLevel(level)}
-                  disabled={!isActive && count === 0}
-                  aria-disabled={!isActive && count === 0}
-                  title={!isActive && count === 0 ? "No employees available for this role level" : undefined}
-                >
-                  {`${level} (${count})`}
-                </button>
-              );
-            })}
         </div>
       </div>
 
-      {readonlyMode ? (
-        <details className="filter-collapsible">
-          <summary>Locations</summary>
-          <div className="chip-scroll">
-            <button
-              type="button"
-              className={`chip ${props.location === null ? "active" : ""}`}
-              onClick={() => props.onLocation(null)}
-            >
-              All
-            </button>
-            {props.locations.map((location) => (
-              <button
-                type="button"
-                key={location}
-                className={`chip ${props.location === location ? "active" : ""}`}
-                onClick={() => props.onLocation(location)}
-              >
-                {location}
-              </button>
-            ))}
-          </div>
-        </details>
-      ) : (
+      {activeScope === "regional" && (
         <div className="filter-group">
-          <h3>Locations</h3>
+          <h3>Regional Locations</h3>
+          <p className="group-hint">Choose a location to apply location-based positions.</p>
           <div className="chip-scroll">
-            <button
-              type="button"
-              className={`chip ${props.location === null ? "active" : ""}`}
-              onClick={() => props.onLocation(null)}
-            >
-              All
-            </button>
             {props.locations.map((location) => (
               <button
                 type="button"
@@ -188,40 +96,11 @@ export function FilterPanel(props: FilterPanelProps) {
         </div>
       )}
 
-      {readonlyMode ? (
-        <details className="filter-collapsible">
-          <summary>Departments</summary>
-          <div className="chip-scroll">
-            <button
-              type="button"
-              className={`chip ${props.department === null ? "active" : ""}`}
-              onClick={() => props.onDepartment(null)}
-            >
-              All
-            </button>
-            {props.departments.map((department) => (
-              <button
-                type="button"
-                key={department}
-                className={`chip ${props.department === department ? "active" : ""}`}
-                onClick={() => props.onDepartment(department)}
-              >
-                {department}
-              </button>
-            ))}
-          </div>
-        </details>
-      ) : (
+      {activeScope === "departmental" && (
         <div className="filter-group">
           <h3>Departments</h3>
+          <p className="group-hint">Choose a department for departmental chart view.</p>
           <div className="chip-scroll">
-            <button
-              type="button"
-              className={`chip ${props.department === null ? "active" : ""}`}
-              onClick={() => props.onDepartment(null)}
-            >
-              All
-            </button>
             {props.departments.map((department) => (
               <button
                 type="button"

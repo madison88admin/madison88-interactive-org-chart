@@ -1,4 +1,4 @@
-export type EmployeeStatus = "standard" | "promoted" | "enhanced" | "new_hire";
+export type EmployeeStatus = "standard" | "promoted" | "enhanced" | "new_hire" | "vacant";
 export type RoleLevel = "CEO" | "President" | "VP" | "Director" | "Sr. Manager" | "Manager" | "Assoc. Manager" | "Supervisor" | "Sr. Specialist" | "Specialist" | "Staff" | "Assoc. Staff";
 
 export const ROLE_LEVELS_ORDER: RoleLevel[] = [
@@ -196,8 +196,8 @@ export const getRoleLevel = (title: string): RoleLevel => {
   if (normalized.includes("director")) return "Director";
 
   if (normalized.includes("sr. manager") || normalized.includes("senior manager")) return "Sr. Manager";
-  if (normalized.includes("manager") || normalized.includes("head")) return "Manager";
   if (normalized.includes("assoc. manager") || normalized.includes("associate manager")) return "Assoc. Manager";
+  if (normalized.includes("manager") || normalized.includes("head")) return "Manager";
 
   if (normalized.includes("supervisor")) return "Supervisor";
 

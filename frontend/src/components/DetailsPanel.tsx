@@ -44,9 +44,11 @@ const STATUS_LABEL: Record<Employee["status"], string> = {
   standard: "Standard Role",
   promoted: "Promoted 2026",
   enhanced: "Enhanced Title 2026",
-  new_hire: "New Hire 2026"
+  new_hire: "New Hire 2026",
+  vacant: "Vacant Position"
 };
 const STATUS_FORM_OPTIONS: Array<{ value: Employee["status"]; label: string }> = [
+  { value: "vacant", label: "Vacant Position" },
   { value: "promoted", label: "Promoted 2026" },
   { value: "enhanced", label: "Enhanced title 2026" },
   { value: "new_hire", label: "New hire 2026" },
@@ -446,11 +448,16 @@ export function DetailsPanel({
             </label>
             <label className="form-field">
               <span>Email</span>
-              <input type="email" value={formEmail} onChange={(event) => setFormEmail(event.target.value)} placeholder="e.g. james.bienen@madison88.com" required />
+              <input
+                type="email"
+                value={formEmail}
+                onChange={(event) => setFormEmail(event.target.value)}
+                placeholder={formStatus === "vacant" ? "Optional for vacant position" : "e.g. james.bienen@madison88.com"}
+              />
             </label>
             <label className="form-field">
               <span>Start Date</span>
-              <input type="date" value={formStartDate} onChange={(event) => setFormStartDate(event.target.value)} required />
+              <input type="date" value={formStartDate} onChange={(event) => setFormStartDate(event.target.value)} />
             </label>
             <label className="form-field">
               <span>Status</span>
@@ -710,11 +717,16 @@ export function DetailsPanel({
             </label>
             <label className="form-field">
               <span>Email</span>
-              <input type="email" value={editEmail} onChange={(event) => setEditEmail(event.target.value)} placeholder="Email" required />
+              <input
+                type="email"
+                value={editEmail}
+                onChange={(event) => setEditEmail(event.target.value)}
+                placeholder={editStatus === "vacant" ? "Optional for vacant position" : "Email"}
+              />
             </label>
             <label className="form-field">
               <span>Start Date</span>
-              <input type="date" value={editStartDate} onChange={(event) => setEditStartDate(event.target.value)} required />
+              <input type="date" value={editStartDate} onChange={(event) => setEditStartDate(event.target.value)} />
             </label>
             <label className="form-field">
               <span>Photo</span>

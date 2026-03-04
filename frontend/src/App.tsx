@@ -5,15 +5,12 @@ import { DetailsPanel } from "./components/DetailsPanel";
 import { FilterPanel } from "./components/FilterPanel";
 import { HoverTooltip } from "./components/HoverTooltip";
 import { Legend } from "./components/Legend";
-import { MiniMap } from "./components/MiniMap";
 import { SearchBar } from "./components/SearchBar";
 import { OrgChartManual } from "./components/OrgChartManual";
 import type { NewEmployeeInput } from "./components/DetailsPanel";
 import type { UpdateEmployeeInput } from "./components/DetailsPanel";
 import {
   allEmployeeLocations,
-  employeeCountsByDepartment,
-  employeeCountsByRoleLevel,
   resolveEmployeeForLocation,
   filterEmployees,
   getRoleLevel,
@@ -62,6 +59,7 @@ const normalizeRegionalRoles = (roles: Employee["regionalRoles"], baseLocation: 
 };
 type ModalMode = "info" | "confirm";
 type ModalTone = "primary" | "danger";
+type ScopeMode = "global" | "regional" | "departmental";
 
 export default function App() {
   const [employees, setEmployees] = useState<Employee[]>(() => {
@@ -83,8 +81,7 @@ export default function App() {
   const [historyPast, setHistoryPast] = useState<Employee[][]>([]);
   const [historyFuture, setHistoryFuture] = useState<Employee[][]>([]);
   const [depthLimit, setDepthLimit] = useState<number | null>(null);
-  const [showDepartmentHeatmap, setShowDepartmentHeatmap] = useState(false);
-  const [pinnedEmployeeIds, setPinnedEmployeeIds] = useState<string[]>([]);
+  const [showDepartmentHeatmap] = useState(false);
 
   const commitEmployeesChange = useCallback((nextState: Employee[] | ((current: Employee[]) => Employee[])) => {
     setEmployees((current) => {
@@ -117,11 +114,11 @@ export default function App() {
     () => normalizedEmployees.map((employee) => resolveEmployeeForLocation(employee, roleLocationContext)),
     [normalizedEmployees, roleLocationContext]
   );
-  const [isCompactLayout, setIsCompactLayout] = useState(true);
+  const [isCompactLayout] = useState(true);
   const [isDepartmentLaneView, setIsDepartmentLaneView] = useState(false);
-  const [showSidePanels, setShowSidePanels] = useState(true);
   const [showFilterPanel, setShowFilterPanel] = useState(true);
-  const [showAdvancedToolbar, setShowAdvancedToolbar] = useState(false);
+  const [isTabletViewport, setIsTabletViewport] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [isReadOnlyView, setIsReadOnlyView] = useState(() => {
     if (typeof window === "undefined") {
       return false;
@@ -149,7 +146,7 @@ export default function App() {
   });
   const modalActionRef = useRef<(() => void) | null>(null);
   const [urlSyncReady, setUrlSyncReady] = useState(false);
-  const [zoom, setZoom] = useState(0.42);
+  const [zoom, setZoom] = useState(0.55);
   const [translate, setTranslate] = useState({ x: 500, y: 90 });
   const closeSystemModal = useCallback(() => {
     modalActionRef.current = null;
@@ -262,21 +259,6 @@ export default function App() {
 
     window.requestAnimationFrame(() => centerOnCard());
   }, []);
-  const copyViewOnlyLink = useCallback(async () => {
-    const url = new URL(window.location.href);
-    url.searchParams.set("readonly", "1");
-    const shareLink = url.toString();
-    try {
-      await window.navigator.clipboard.writeText(shareLink);
-      showInfoModal("View-only link copied.", "Share Link");
-    } catch {
-      showInfoModal(
-        "Clipboard access is blocked on this browser. Copy the link below manually.",
-        "Copy View-Only Link",
-        { linkValue: shareLink, confirmText: "Close" }
-      );
-    }
-  }, [showInfoModal]);
   const zoomPercent = Math.round(zoom * 100);
   const canUndo = !isReadOnlyView && historyPast.length > 0;
   const canRedo = !isReadOnlyView && historyFuture.length > 0;
@@ -289,7 +271,7 @@ export default function App() {
           acc[employee.status] += 1;
           return acc;
         },
-        { standard: 0, promoted: 0, enhanced: 0, new_hire: 0 }
+        { standard: 0, promoted: 0, enhanced: 0, new_hire: 0, vacant: 0 }
       ),
     [contextualEmployees]
   );
@@ -378,9 +360,19 @@ export default function App() {
     return { depthById: depthMap, maxVisibleDepth: maxDepth };
   }, [visibleEmployees]);
 
+  const effectiveDepthLimit = useMemo(() => {
+    if (isTabletViewport) {
+      return depthLimit ? Math.min(depthLimit, 2) : 2;
+    }
+    return depthLimit;
+  }, [depthLimit, isTabletViewport]);
+
   const chartEmployees = useMemo(
-    () => (depthLimit ? visibleEmployees.filter((employee) => (depthById.get(employee.id) ?? 1) <= depthLimit) : visibleEmployees),
-    [visibleEmployees, depthById, depthLimit]
+    () =>
+      effectiveDepthLimit
+        ? visibleEmployees.filter((employee) => (depthById.get(employee.id) ?? 1) <= effectiveDepthLimit)
+        : visibleEmployees,
+    [visibleEmployees, depthById, effectiveDepthLimit]
   );
   const hasNoResults = chartEmployees.length === 0;
 
@@ -399,26 +391,7 @@ export default function App() {
     [visibleEmployees, hoveredEmployeeId]
   );
   const detailsEmployee = hoveredEmployee ?? selectedEmployee;
-  const pinnedEmployees = useMemo(
-    () =>
-      pinnedEmployeeIds
-        .map((id) => contextualEmployees.find((employee) => employee.id === id))
-        .filter((employee): employee is Employee => Boolean(employee)),
-    [contextualEmployees, pinnedEmployeeIds]
-  );
-  const isSelectedPinned = Boolean(selectedEmployeeId && pinnedEmployeeIds.includes(selectedEmployeeId));
-
   const suggestions = useMemo(() => searchSuggestions(contextualEmployees, searchQuery), [contextualEmployees, searchQuery]);
-
-  const countsByDepartment = useMemo(() => employeeCountsByDepartment(visibleEmployees), [visibleEmployees]);
-  const countsByRoleLevel = useMemo(() => employeeCountsByRoleLevel(visibleEmployees), [visibleEmployees]);
-  const topDepartment = useMemo(
-    () =>
-      Object.entries(countsByDepartment)
-        .sort(([, left], [, right]) => right - left)[0],
-    [countsByDepartment]
-  );
-  const uniqueLocations = useMemo(() => new Set(visibleEmployees.map((employee: Employee) => employee.location)).size, [visibleEmployees]);
   const scopeLabel = useMemo(() => {
     if (viewMode === "individual" && selectedEmployee) {
       return `${selectedEmployee.name} Focus`;
@@ -443,6 +416,55 @@ export default function App() {
     }
     return "Global Team";
   }, [department, executiveOnly, isDepartmentLaneView, location, roleLevel, searchQuery, selectedEmployee, viewMode]);
+  const activeScope: ScopeMode = viewMode === "location" ? "regional" : viewMode === "department" ? "departmental" : "global";
+  const chartTransitionKey = `${activeScope}-${location ?? "all"}-${department ?? "all"}`;
+  const mobileDepartmentGroups = useMemo(
+    () =>
+      Object.entries(
+        visibleEmployees.reduce<Record<string, Employee[]>>((acc, employee) => {
+          const key = employee.department || "Unassigned";
+          const list = acc[key] ?? [];
+          list.push(employee);
+          acc[key] = list;
+          return acc;
+        }, {})
+      )
+        .map(([group, members]) => ({
+          group,
+          members: [...members].sort((left, right) => left.name.localeCompare(right.name))
+        }))
+        .sort((left, right) => left.group.localeCompare(right.group)),
+    [visibleEmployees]
+  );
+
+  const activateGlobalScope = useCallback(() => {
+    setViewMode("full");
+    setDepartment(null);
+    setLocation(null);
+    setRoleLevel(null);
+    setExecutiveOnly(false);
+    setQuickFilters([]);
+  }, []);
+
+  const activateRegionalScope = useCallback(() => {
+    const nextLocation = location ?? locations[0] ?? null;
+    setViewMode("location");
+    setLocation(nextLocation);
+    setDepartment(null);
+    setRoleLevel(null);
+    setExecutiveOnly(false);
+    setQuickFilters([]);
+  }, [location, locations]);
+
+  const activateDepartmentalScope = useCallback(() => {
+    const nextDepartment = department ?? departments[0] ?? null;
+    setViewMode("department");
+    setDepartment(nextDepartment);
+    setLocation(null);
+    setRoleLevel(null);
+    setExecutiveOnly(false);
+    setQuickFilters([]);
+  }, [department, departments]);
 
   const fitView = useCallback(() => {
     if (!wrapperRef.current) return;
@@ -450,21 +472,24 @@ export default function App() {
     const containerHeight = wrapperRef.current.clientHeight;
 
     // Calculate scale to fit with margin
-    const padding = 80; // Reduced padding to give more room for the chart
+    const padding = 44;
     const scaleX = (containerWidth - padding) / (chartDims.width || 2000);
     const scaleY = (containerHeight - padding) / (chartDims.height || 1000);
 
-    // Clamp zoom to reasonable range - don't go below 0.35 to keep it readable
-    const newZoom = Math.max(0.35, Math.min(scaleX, scaleY, 0.9));
+    // Keep regional/departmental charts readable by default.
+    const baseMinZoom = activeScope === "global" ? 0.42 : 0.56;
+    const readabilityMinZoom =
+      chartEmployees.length <= 10 ? 0.74 : chartEmployees.length <= 24 ? 0.62 : baseMinZoom;
+    const newZoom = Math.max(readabilityMinZoom, Math.min(scaleX, scaleY, 1.1));
 
     setZoom(newZoom);
 
     // Center the chart
     setTranslate({
       x: (containerWidth - chartDims.width * newZoom) / 2,
-      y: Math.max(40, (containerHeight - chartDims.height * newZoom) / 2),
+      y: Math.max(22, (containerHeight - chartDims.height * newZoom) / 2),
     });
-  }, [chartDims]);
+  }, [activeScope, chartDims, chartEmployees.length]);
 
   const zoomAroundPoint = useCallback(
     (nextZoom: number, focalPoint?: { x: number; y: number }) => {
@@ -524,6 +549,54 @@ export default function App() {
       showInfoModal("PNG export failed. Check image permissions and try again.", "Export");
     }
   }, [showInfoModal]);
+
+  const exportPdf = useCallback(async () => {
+    const surface = wrapperRef.current;
+    if (!surface) {
+      showInfoModal("Unable to export PDF right now. Please try again.", "Export");
+      return;
+    }
+
+    try {
+      const imageData = await toPng(surface, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#071723"
+      });
+      const printWindow = window.open("", "_blank", "noopener,noreferrer");
+      if (!printWindow) {
+        showInfoModal("Popup blocked. Allow popups to export PDF.", "Export");
+        return;
+      }
+      printWindow.document.write(`
+        <!doctype html>
+        <html>
+          <head>
+            <title>Madison88 Org Chart PDF</title>
+            <style>
+              html, body { margin: 0; padding: 0; background: #071723; }
+              img { width: 100%; height: auto; display: block; }
+              @page { margin: 8mm; }
+            </style>
+          </head>
+          <body>
+            <img src="${imageData}" alt="Madison88 Org Chart Export" />
+            <script>
+              window.onload = function () { window.print(); };
+            </script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+    } catch (error) {
+      console.error("Failed to export PDF", error);
+      showInfoModal("PDF export failed. Please try Print and Save as PDF.", "Export");
+    }
+  }, [showInfoModal]);
+
+  const printChart = useCallback(() => {
+    window.print();
+  }, []);
 
   const undoEmployeesChange = useCallback(() => {
     if (isReadOnlyView) {
@@ -600,6 +673,18 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKeydown);
   }, [fitView, isReadOnlyView, redoEmployeesChange, undoEmployeesChange, zoomAroundPoint, zoom]);
 
+  useEffect(() => {
+    const syncViewport = () => {
+      const width = window.innerWidth;
+      setIsMobileViewport(width <= 760);
+      setIsTabletViewport(width > 760 && width <= 1120);
+    };
+
+    syncViewport();
+    window.addEventListener("resize", syncViewport);
+    return () => window.removeEventListener("resize", syncViewport);
+  }, []);
+
   // Only auto-zoom when layout type changes significantly
   useEffect(() => {
     // If we have dimensions, fitView is better than a hardcoded zoom
@@ -634,24 +719,6 @@ export default function App() {
     }
   }, [normalizedEmployees, selectedEmployeeId]);
 
-  useEffect(() => {
-    const employeeIdSet = new Set(normalizedEmployees.map((employee) => employee.id));
-    setPinnedEmployeeIds((current) => current.filter((id) => employeeIdSet.has(id)));
-  }, [normalizedEmployees]);
-
-  const togglePinnedEmployee = useCallback((employeeId: string) => {
-    setPinnedEmployeeIds((current) => {
-      if (current.includes(employeeId)) {
-        return current.filter((id) => id !== employeeId);
-      }
-      const next = [...current, employeeId];
-      if (next.length > 6) {
-        return next.slice(next.length - 6);
-      }
-      return next;
-    });
-  }, []);
-
   const resetAllFilters = useCallback(() => {
     setViewMode("full");
     setDepartment(null);
@@ -680,48 +747,20 @@ export default function App() {
   }, []);
 
   const applyDepartmentPreset = useCallback(() => {
-    setViewMode("full");
-    setDepartment(null);
+    setViewMode("department");
+    setDepartment((current) => current ?? departments[0] ?? null);
     setLocation(null);
     setQuickFilters([]);
     setSearchQuery("");
     setRoleLevel(null);
     setExecutiveOnly(false);
-    setIsDepartmentLaneView(true);
-  }, []);
+    setIsDepartmentLaneView(false);
+  }, [departments]);
 
   const applyAllEmployeesPreset = useCallback(() => {
-    resetAllFilters();
+    activateGlobalScope();
     setIsDepartmentLaneView(false);
-  }, [resetAllFilters]);
-
-  const resetToOriginalDirectory = useCallback(() => {
-    if (isReadOnlyView) {
-      return;
-    }
-    showConfirmModal(
-      "Reset all changes and restore the original employee directory?",
-      () => {
-        const restored = inferHierarchy(rawEmployees);
-        commitEmployeesChange(restored);
-        setSelectedEmployeeId(restored.find((employee) => !employee.managerId)?.id ?? restored[0]?.id ?? null);
-        setShowFilterPanel(false);
-        applyAllEmployeesPreset();
-
-        try {
-          window.localStorage.removeItem(EMPLOYEES_STORAGE_KEY);
-        } catch {
-          // Ignore storage errors.
-        }
-      },
-      {
-        title: "Reset Directory",
-        confirmText: "Reset",
-        cancelText: "Cancel",
-        tone: "danger"
-      }
-    );
-  }, [applyAllEmployeesPreset, commitEmployeesChange, isReadOnlyView, showConfirmModal]);
+  }, [activateGlobalScope]);
 
   const addEmployee = useCallback(
     (input: NewEmployeeInput) => {
@@ -737,12 +776,17 @@ export default function App() {
       const status = input.status;
       const normalizedPhoto = input.photo?.trim() ?? "";
       const normalizedRegionalRoles = normalizeRegionalRoles(input.regionalRoles, locationValue);
-      if (!name || !title || !departmentValue || !locationValue || !normalizedEmail || !startDate) {
+      const requiresContactDetails = status !== "vacant";
+      if (!name || !title || !departmentValue || !locationValue) {
         showInfoModal("Please complete all required employee fields before saving.", "Validation");
         return;
       }
+      if (requiresContactDetails && (!normalizedEmail || !startDate)) {
+        showInfoModal("Email and start date are required unless status is Vacant.", "Validation");
+        return;
+      }
 
-      if (employees.some((employee) => employee.email.trim().toLowerCase() === normalizedEmail)) {
+      if (normalizedEmail && employees.some((employee) => employee.email.trim().toLowerCase() === normalizedEmail)) {
         showInfoModal("Email already exists. Please use a unique email address.", "Validation");
         return;
       }
@@ -758,8 +802,8 @@ export default function App() {
         title,
         department: departmentValue,
         location: locationValue,
-        email: normalizedEmail,
-        startDate,
+        email: normalizedEmail || `vacant-${nextId}@madison88.local`,
+        startDate: startDate || new Date().toISOString().slice(0, 10),
         status,
         managerId: input.managerId,
         regionalRoles: normalizedRegionalRoles,
@@ -784,8 +828,13 @@ export default function App() {
     const startDate = input.startDate.trim();
     const normalizedPhoto = input.photo?.trim() ?? "";
     const normalizedRegionalRoles = normalizeRegionalRoles(input.regionalRoles, locationValue);
-    if (!name || !title || !departmentValue || !locationValue || !normalizedEmail || !startDate) {
+    const requiresContactDetails = input.status !== "vacant";
+    if (!name || !title || !departmentValue || !locationValue) {
       showInfoModal("Please complete all required employee fields before saving.", "Validation");
+      return;
+    }
+    if (requiresContactDetails && (!normalizedEmail || !startDate)) {
+      showInfoModal("Email and start date are required unless status is Vacant.", "Validation");
       return;
     }
 
@@ -794,7 +843,7 @@ export default function App() {
       return;
     }
 
-    if (employees.some((employee) => employee.id !== input.id && employee.email.trim().toLowerCase() === normalizedEmail)) {
+    if (normalizedEmail && employees.some((employee) => employee.id !== input.id && employee.email.trim().toLowerCase() === normalizedEmail)) {
       showInfoModal("Email already exists. Please use a unique email address.", "Validation");
       return;
     }
@@ -808,8 +857,8 @@ export default function App() {
             title,
             department: departmentValue,
             location: locationValue,
-            email: normalizedEmail,
-            startDate,
+            email: normalizedEmail || `vacant-${input.id}@madison88.local`,
+            startDate: startDate || employee.startDate || new Date().toISOString().slice(0, 10),
             status: input.status,
             managerId: input.managerId,
             regionalRoles: normalizedRegionalRoles,
@@ -902,11 +951,12 @@ export default function App() {
     const preset = params.get("preset");
     const role = params.get("role");
     const query = params.get("q");
-    const panels = params.get("panels");
     const readonly = params.get("readonly");
 
-    if (preset === "department") {
+    if (preset === "departmental" || preset === "department") {
       applyDepartmentPreset();
+    } else if (preset === "regional") {
+      activateRegionalScope();
     } else if (preset === "all") {
       applyAllEmployeesPreset();
     } else {
@@ -924,11 +974,10 @@ export default function App() {
     }
 
     setIsReadOnlyView(readonly === "1");
-    setShowSidePanels(panels !== "0");
     setShowFilterPanel(params.get("filters") !== "0");
     hasInitializedFromUrl.current = true;
     setUrlSyncReady(true);
-  }, [applyAllEmployeesPreset, applyDepartmentPreset, applyLeadershipPreset]);
+  }, [activateRegionalScope, applyAllEmployeesPreset, applyDepartmentPreset, applyLeadershipPreset]);
 
   useEffect(() => {
     if (!urlSyncReady) {
@@ -936,16 +985,20 @@ export default function App() {
     }
 
     const params = new URLSearchParams();
-    const preset = executiveOnly && (roleLevel === "CEO" || roleLevel === "President" || roleLevel === "VP") ? "leadership" : isDepartmentLaneView ? "department" : "all";
+    const preset =
+      executiveOnly && (roleLevel === "CEO" || roleLevel === "President" || roleLevel === "VP")
+        ? "leadership"
+        : viewMode === "location"
+          ? "regional"
+          : viewMode === "department"
+            ? "departmental"
+            : "all";
     params.set("preset", preset);
     if (roleLevel) {
       params.set("role", roleLevel);
     }
     if (searchQuery.trim()) {
       params.set("q", searchQuery.trim());
-    }
-    if (showSidePanels) {
-      params.set("panels", "1");
     }
     if (showFilterPanel) {
       params.set("filters", "1");
@@ -957,7 +1010,7 @@ export default function App() {
     const queryString = params.toString();
     const nextUrl = queryString ? `${window.location.pathname}?${queryString}` : window.location.pathname;
     window.history.replaceState({}, "", nextUrl);
-  }, [urlSyncReady, executiveOnly, roleLevel, isDepartmentLaneView, isReadOnlyView, searchQuery, showSidePanels, showFilterPanel]);
+  }, [urlSyncReady, executiveOnly, roleLevel, viewMode, isReadOnlyView, searchQuery, showFilterPanel]);
 
   // Custom interaction handlers for the manual chart
   const [isDragging, setIsDragging] = useState(false);
@@ -979,21 +1032,6 @@ export default function App() {
   };
 
   const handleMouseUp = () => setIsDragging(false);
-
-  const centerCanvas = useCallback(() => {
-    const wrapper = wrapperRef.current;
-    if (!wrapper) {
-      return;
-    }
-
-    const containerWidth = wrapper.clientWidth;
-    const containerHeight = wrapper.clientHeight;
-
-    setTranslate({
-      x: (containerWidth - chartDims.width * zoom) / 2,
-      y: (containerHeight - chartDims.height * zoom) / 2,
-    });
-  }, [chartDims.height, chartDims.width, zoom]);
 
   const zoomOut = useCallback(() => {
     zoomAroundPoint(zoom - 0.08);
@@ -1054,17 +1092,15 @@ export default function App() {
           <p className="brand-tagline">Org Intelligence Dashboard</p>
         </div>
         <div className="hero-header-right">
-          <h2>Global Team</h2>
-          <p className="scope-label" aria-live="polite">Scope: {scopeLabel}</p>
+          <h2>
+            {activeScope === "global"
+              ? "Global Team"
+              : activeScope === "regional"
+                ? `Regional Team - ${scopeLabel}`
+                : `Departmental Team - ${scopeLabel}`}
+          </h2>
         </div>
         <div className="header-tools">
-          <div className="header-meta" aria-label="view metrics">
-            <span>{chartEmployees.length} shown</span>
-            <span>{visibleEmployees.length} filtered</span>
-            <span>{normalizedEmployees.length} total</span>
-            <span>{activeFilterCount} active filters</span>
-            {isReadOnlyView && <span>View-only mode</span>}
-          </div>
           <SearchBar
             query={searchQuery}
             suggestions={suggestions}
@@ -1079,69 +1115,81 @@ export default function App() {
         </div>
       </header>
 
-      <main className={`layout-grid ${showSidePanels ? "" : "no-left"}`}>
-        {showSidePanels && (
-          <section className="left-column">
-            <section className="summary-panel insight-strip" aria-label="Live insights">
-              <h3>Live Insights</h3>
-              <div className="insight-pill">
-                <span>Visible Team</span>
-                <strong>{chartEmployees.length}</strong>
-              </div>
-              <div className="insight-pill">
-                <span>Active Locations</span>
-                <strong>{uniqueLocations}</strong>
-              </div>
-              <div className="insight-pill">
-                <span>Largest Department</span>
-                <strong>{topDepartment ? `${topDepartment[0]} (${topDepartment[1]})` : "N/A"}</strong>
-              </div>
-            </section>
-            <Legend />
-            <MiniMap zoom={zoom} translate={translate} totalNodes={chartEmployees.length} />
-            <section className="summary-panel pinned-panel" aria-label="Pinned employees">
-              <div className="pinned-head">
-                <h3>Pinned Compare</h3>
-                <span>{pinnedEmployees.length}/6</span>
-              </div>
-              {pinnedEmployees.length === 0 && <p className="pinned-empty">Pin key roles to compare at a glance.</p>}
-              {pinnedEmployees.map((employee) => (
-                <div key={employee.id} className="pinned-card">
-                  <p className="pinned-name">{employee.name}</p>
-                  <p className="pinned-title">{employee.title}</p>
-                  <p className="pinned-meta">{employee.department} - {employee.location}</p>
-                  <div className="pinned-actions">
-                    <button type="button" className="ghost-btn" onClick={() => focusEmployeeInChart(employee.id)}>
-                      Focus
-                    </button>
-                    <button type="button" className="ghost-btn" onClick={() => togglePinnedEmployee(employee.id)}>
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </section>
-            <section className="summary-panel" aria-label="Headcount summary">
-              <h3>Department Headcount</h3>
-              {Object.entries(countsByDepartment).map(([name, count]) => (
-                <p key={name}>
-                  <span>{name}</span>
-                  <strong>{count}</strong>
-                </p>
-              ))}
-            </section>
-            <section className="summary-panel" aria-label="Role level breakdown">
-              <h3>Role Breakdown</h3>
-              {Object.entries(countsByRoleLevel).map(([name, count]) => (
-                <p key={name}>
-                  <span>{name}</span>
-                  <strong>{count}</strong>
-                </p>
-              ))}
-            </section>
-          </section>
-        )}
+      <section className="scope-control-bar" aria-label="Chart scope controls">
+        <div className="scope-main-controls">
+          <div className="scope-button-group" role="tablist" aria-label="Chart Scope">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeScope === "global"}
+              className={`scope-btn ${activeScope === "global" ? "is-active" : ""}`}
+              onClick={activateGlobalScope}
+            >
+              Global
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeScope === "regional"}
+              className={`scope-btn ${activeScope === "regional" ? "is-active" : ""}`}
+              onClick={activateRegionalScope}
+            >
+              Regional
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeScope === "departmental"}
+              className={`scope-btn ${activeScope === "departmental" ? "is-active" : ""}`}
+              onClick={activateDepartmentalScope}
+            >
+              Departmental
+            </button>
+          </div>
 
+          {activeScope === "regional" && (
+            <div className="scope-chip-row" aria-label="Regional locations">
+              {locations.map((entry) => (
+                <button
+                  type="button"
+                  key={entry}
+                  className={`scope-chip ${location === entry ? "is-active" : ""}`}
+                  onClick={() => {
+                    setViewMode("location");
+                    setLocation(entry);
+                  }}
+                >
+                  {entry}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {activeScope === "departmental" && (
+            <div className="scope-chip-row" aria-label="Departments">
+              {departments.map((entry) => (
+                <button
+                  type="button"
+                  key={entry}
+                  className={`scope-chip ${department === entry ? "is-active" : ""}`}
+                  onClick={() => {
+                    setViewMode("department");
+                    setDepartment(entry);
+                  }}
+                >
+                  {entry}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="scope-support-panels">
+          <Legend compact />
+        </div>
+      </section>
+
+      <main className="layout-grid no-left">
         <section className="chart-column">
           <div className="chart-actions">
             <div className="chart-toolbar" aria-label="Zoom controls">
@@ -1183,68 +1231,22 @@ export default function App() {
                 <button type="button" onClick={downloadPng}>
                   Download PNG
                 </button>
+                <button type="button" onClick={exportPdf}>
+                  Export PDF
+                </button>
+                <button type="button" onClick={printChart}>
+                  Print
+                </button>
                 <button type="button" onClick={() => setShowFilterPanel((current) => !current)}>
                   {showFilterPanel ? "Hide Filters" : "Show Filters"}
                 </button>
-                <button
-                  type="button"
-                  className={`toolbar-more-btn ${showAdvancedToolbar ? "is-active" : ""}`}
-                  onClick={() => setShowAdvancedToolbar((current) => !current)}
-                  aria-expanded={showAdvancedToolbar}
-                  aria-controls="advanced-toolbar-controls"
-                >
-                  {showAdvancedToolbar ? "Less Controls" : "More Controls"}
-                </button>
               </div>
             </div>
-            {showAdvancedToolbar && (
-              <div className="toolbar-extra" id="advanced-toolbar-controls">
-                <button type="button" onClick={() => copyViewOnlyLink()}>
-                  Copy View Link
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    fitView();
-                  }}
-                >
-                  Reset View
-                </button>
-                <button type="button" onClick={centerCanvas}>
-                  Center Canvas
-                </button>
-                <button type="button" onClick={() => setIsDepartmentLaneView((current) => !current)}>
-                  {isDepartmentLaneView ? "Hierarchical View" : "Department Lanes"}
-                </button>
-                <button type="button" onClick={() => setShowDepartmentHeatmap((current) => !current)}>
-                  {showDepartmentHeatmap ? "Hide Heatmap" : "Department Heatmap"}
-                </button>
-                <button type="button" onClick={() => setIsCompactLayout((current) => !current)}>
-                  {isCompactLayout ? "Comfort Layout" : "Compact Layout"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => selectedEmployeeId && togglePinnedEmployee(selectedEmployeeId)}
-                  disabled={!selectedEmployeeId}
-                >
-                  {isSelectedPinned ? "Unpin Selected" : "Pin Selected"}
-                </button>
-                {!isReadOnlyView && (
-                  <button type="button" onClick={resetToOriginalDirectory}>
-                    Reset Directory
-                  </button>
-                )}
-                {isReadOnlyView && (
-                  <button type="button" onClick={() => setShowSidePanels((current) => !current)}>
-                    {showSidePanels ? "Hide Panels" : "Show Panels"}
-                  </button>
-                )}
-              </div>
-            )}
             <div className="toolbar-meta" role="status" aria-live="polite">
               <span>Zoom {zoomPercent}%</span>
               <span>Pan X {Math.round(translate.x)}</span>
               <span>Pan Y {Math.round(translate.y)}</span>
+              {isTabletViewport && <span>Tablet mode: Level 2 preview</span>}
               <span>Tip: Drag to pan, mouse wheel to zoom, F to search</span>
             </div>
           </div>
@@ -1257,7 +1259,7 @@ export default function App() {
               setHoverPosition(null);
             }}
           >
-            {hasNoResults ? (
+            {(isMobileViewport ? mobileDepartmentGroups.length === 0 : hasNoResults) ? (
               <div className="chart-empty-state" role="status" aria-live="polite">
                 <h3>No matching employees</h3>
                 <p>Walang results sa selected filters. Try another filter or reset to view all employees.</p>
@@ -1277,8 +1279,30 @@ export default function App() {
                   </button>
                 </div>
               </div>
+            ) : isMobileViewport ? (
+              <div className="mobile-list-view" key={chartTransitionKey}>
+                <p className="mobile-view-note">Mobile view: grouped list by department</p>
+                {mobileDepartmentGroups.map((group) => (
+                  <section key={group.group} className="mobile-group">
+                    <h3>{group.group}</h3>
+                    {group.members.map((employee) => (
+                      <button
+                        key={employee.id}
+                        type="button"
+                        className="mobile-employee-item"
+                        onClick={() => focusEmployeeInChart(employee.id)}
+                      >
+                        <span>{employee.name}</span>
+                        <small>{employee.title}</small>
+                      </button>
+                    ))}
+                  </section>
+                ))}
+              </div>
             ) : (
               <div
+                key={chartTransitionKey}
+                className="chart-pan-layer"
                 style={{
                   width: "100%",
                   height: "100%",
