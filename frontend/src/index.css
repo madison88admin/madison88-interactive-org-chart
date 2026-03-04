@@ -1,0 +1,34 @@
+﻿@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply m-0 min-h-screen bg-slate-100 text-slate-900;
+  background-image: radial-gradient(circle at 20% 20%, rgba(11, 94, 215, 0.09), transparent 45%),
+    radial-gradient(circle at 80% 0%, rgba(14, 159, 110, 0.08), transparent 35%);
+}
+
+#root {
+  @apply min-h-screen;
+}
+
+.org-node-enter {
+  animation: fade-slide 0.35s ease-out;
+}
+
+@keyframes fade-slide {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
