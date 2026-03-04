@@ -73,25 +73,36 @@ export function FilterPanel(props: FilterPanelProps) {
       {!readonlyMode && (
         <div className="filter-group">
           <h3>2026 Quick Filters</h3>
-          <div className="chip-grid">
-            {[
-              ["promoted", "Promoted"],
-              ["new_hire", "New Hires"],
-              ["enhanced", "Enhanced Titles"]
-            ].map(([status, label]) => (
+        <div className="chip-grid">
+          {[
+            ["promoted", "Promoted"],
+            ["new_hire", "New Hires"],
+            ["enhanced", "Enhanced Titles"]
+          ].map(([status, label]) => {
+            const typedStatus = status as EmployeeStatus;
+            const count = props.statusCounts[typedStatus] ?? 0;
+            const isActive = props.quickFilters.includes(typedStatus);
+            return (
               <button
                 type="button"
                 key={status}
-                className={`chip ${props.quickFilters.includes(status as EmployeeStatus) ? "active" : ""}`}
-                onClick={() => props.onToggleStatus(status as EmployeeStatus)}
+                className={`chip ${isActive ? "active" : ""}`}
+                onClick={() => props.onToggleStatus(typedStatus)}
+                disabled={!isActive && count === 0}
+                aria-disabled={!isActive && count === 0}
+                title={!isActive && count === 0 ? "No employees available for this filter" : undefined}
               >
-                {`${label} (${props.statusCounts[status as EmployeeStatus] ?? 0})`}
+                {`${label} (${count})`}
               </button>
-            ))}
+            );
+          })}
             <button
               type="button"
               className={`chip ${props.executiveOnly ? "active" : ""}`}
               onClick={props.onToggleExecutive}
+              disabled={!props.executiveOnly && props.executiveCount === 0}
+              aria-disabled={!props.executiveOnly && props.executiveCount === 0}
+              title={!props.executiveOnly && props.executiveCount === 0 ? "No executives available for this filter" : undefined}
             >
               {`Executives Only (${props.executiveCount})`}
             </button>
@@ -109,16 +120,23 @@ export function FilterPanel(props: FilterPanelProps) {
           >
             All
           </button>
-          {(["CEO", "President", "VP", "Director", "Sr. Manager", "Manager", "Assoc. Manager", "Supervisor", "Sr. Specialist", "Specialist", "Staff", "Assoc. Staff"] as const).map((level) => (
-            <button
-              type="button"
-              key={level}
-              className={`chip ${props.roleLevel === level ? "active" : ""}`}
-              onClick={() => props.onRoleLevel(level)}
-            >
-              {`${level} (${props.roleLevelCounts[level] ?? 0})`}
-            </button>
-          ))}
+          {(["CEO", "President", "VP", "Director", "Sr. Manager", "Manager", "Assoc. Manager", "Supervisor", "Sr. Specialist", "Specialist", "Staff", "Assoc. Staff"] as const).map((level) => {
+              const count = props.roleLevelCounts[level] ?? 0;
+              const isActive = props.roleLevel === level;
+              return (
+                <button
+                  type="button"
+                  key={level}
+                  className={`chip ${isActive ? "active" : ""}`}
+                  onClick={() => props.onRoleLevel(level)}
+                  disabled={!isActive && count === 0}
+                  aria-disabled={!isActive && count === 0}
+                  title={!isActive && count === 0 ? "No employees available for this role level" : undefined}
+                >
+                  {`${level} (${count})`}
+                </button>
+              );
+            })}
         </div>
       </div>
 

@@ -85,6 +85,7 @@ export default function App() {
   const [isDepartmentLaneView, setIsDepartmentLaneView] = useState(false);
   const [showSidePanels, setShowSidePanels] = useState(true);
   const [showFilterPanel, setShowFilterPanel] = useState(true);
+  const [showAdvancedToolbar, setShowAdvancedToolbar] = useState(false);
   const [urlSyncReady, setUrlSyncReady] = useState(false);
   const [zoom, setZoom] = useState(0.42);
   const [translate, setTranslate] = useState({ x: 500, y: 90 });
@@ -193,6 +194,7 @@ export default function App() {
     () => (depthLimit ? visibleEmployees.filter((employee) => (depthById.get(employee.id) ?? 1) <= depthLimit) : visibleEmployees),
     [visibleEmployees, depthById, depthLimit]
   );
+  const hasNoResults = chartEmployees.length === 0;
 
   const chartMatchingIds = useMemo(() => {
     const shownIds = new Set(chartEmployees.map((employee) => employee.id));
@@ -229,6 +231,30 @@ export default function App() {
     [countsByDepartment]
   );
   const uniqueLocations = useMemo(() => new Set(visibleEmployees.map((employee: Employee) => employee.location)).size, [visibleEmployees]);
+  const scopeLabel = useMemo(() => {
+    if (viewMode === "individual" && selectedEmployee) {
+      return `${selectedEmployee.name} Focus`;
+    }
+    if (viewMode === "department" && department) {
+      return `${department} Dept`;
+    }
+    if (viewMode === "location" && location) {
+      return location;
+    }
+    if (roleLevel) {
+      return `${roleLevel} Roles`;
+    }
+    if (executiveOnly) {
+      return "Executive Team";
+    }
+    if (searchQuery.trim()) {
+      return "Search Results";
+    }
+    if (isDepartmentLaneView) {
+      return "Department Lanes";
+    }
+    return "Global Team";
+  }, [department, executiveOnly, isDepartmentLaneView, location, roleLevel, searchQuery, selectedEmployee, viewMode]);
 
   const fitView = useCallback(() => {
     if (!wrapperRef.current) return;
@@ -280,32 +306,30 @@ export default function App() {
   );
 
   const downloadPng = useCallback(async () => {
-    const exportRoot = wrapperRef.current?.querySelector(".org-export-root") as HTMLElement | null;
-    if (!exportRoot) {
+    const surface = wrapperRef.current;
+    if (!surface) {
       window.alert("Unable to export right now. Please try again.");
       return;
     }
-
-    const rawWidth = Math.max(1200, exportRoot.scrollWidth);
-    const rawHeight = Math.max(720, exportRoot.scrollHeight);
-    const maxDimension = 8000;
-    const scaleFactor = Math.min(1, maxDimension / Math.max(rawWidth, rawHeight));
-    const exportWidth = Math.floor(rawWidth * scaleFactor);
-    const exportHeight = Math.floor(rawHeight * scaleFactor);
+    const exportWidth = Math.max(1, surface.clientWidth);
+    const exportHeight = Math.max(1, surface.clientHeight);
 
     try {
-      const pngUrl = await toPng(exportRoot, {
+      const pngUrl = await toPng(surface, {
         cacheBust: true,
         pixelRatio: 2,
         backgroundColor: "#071723",
         width: exportWidth,
         height: exportHeight,
+        style: {
+          overflow: "hidden"
+        },
         imagePlaceholder: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
       });
 
       const link = document.createElement("a");
       link.href = pngUrl;
-      link.download = `madison88-org-${new Date().toISOString().slice(0, 10)}.png`;
+      link.download = `madison88-org-view-${new Date().toISOString().slice(0, 10)}.png`;
       link.click();
     } catch (error) {
       console.error("Failed to export PNG", error);
@@ -781,6 +805,7 @@ export default function App() {
         </div>
         <div className="hero-header-right">
           <h2>Global Team</h2>
+          <p className="scope-label" aria-live="polite">Scope: {scopeLabel}</p>
         </div>
         <div className="header-tools">
           <div className="header-meta" aria-label="view metrics">
@@ -869,87 +894,101 @@ export default function App() {
         <section className="chart-column">
           <div className="chart-actions">
             <div className="chart-toolbar" aria-label="Zoom controls">
-              <button type="button" onClick={undoEmployeesChange} disabled={!canUndo} aria-label="Undo last employee change">
-                Undo
-              </button>
-              <button type="button" onClick={redoEmployeesChange} disabled={!canRedo} aria-label="Redo last employee change">
-                Redo
-              </button>
-              <button type="button" onClick={zoomOut} aria-label="Zoom out">
-                Zoom -
-              </button>
-              <button type="button" onClick={zoomIn} aria-label="Zoom in">
-                Zoom +
-              </button>
-              <label className="toolbar-select" aria-label="Expand or collapse hierarchy by level">
-                <span>Level</span>
-                <select
-                  value={depthLimit ?? "all"}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setDepthLimit(value === "all" ? null : Number(value));
+              <div className="toolbar-group">
+                <button type="button" onClick={undoEmployeesChange} disabled={!canUndo} aria-label="Undo last employee change">
+                  Undo
+                </button>
+                <button type="button" onClick={redoEmployeesChange} disabled={!canRedo} aria-label="Redo last employee change">
+                  Redo
+                </button>
+                <button type="button" onClick={zoomOut} aria-label="Zoom out">
+                  Zoom -
+                </button>
+                <button type="button" onClick={zoomIn} aria-label="Zoom in">
+                  Zoom +
+                </button>
+                <label className="toolbar-select" aria-label="Expand or collapse hierarchy by level">
+                  <span>Level</span>
+                  <select
+                    value={depthLimit ?? "all"}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setDepthLimit(value === "all" ? null : Number(value));
+                    }}
+                  >
+                    <option value="all">All Levels</option>
+                    {depthOptions.map((level) => (
+                      <option key={level} value={level}>
+                        Level {level}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button type="button" onClick={fitView}>
+                  Fit View
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    fitView();
                   }}
                 >
-                  <option value="all">All Levels</option>
-                  {depthOptions.map((level) => (
-                    <option key={level} value={level}>
-                      Level {level}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button type="button" onClick={fitView}>
-                Fit View
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  fitView();
-                }}
-              >
-                Reset View
-              </button>
-              {!READ_ONLY_MODE && (
-                <>
-                  <button type="button" onClick={() => setIsDepartmentLaneView((current) => !current)}>
-                    {isDepartmentLaneView ? "Hierarchical View" : "Department Lanes"}
-                  </button>
-                  <button type="button" onClick={() => setShowDepartmentHeatmap((current) => !current)}>
-                    {showDepartmentHeatmap ? "Hide Heatmap" : "Department Heatmap"}
-                  </button>
-                  <button type="button" onClick={() => setIsCompactLayout((current) => !current)}>
-                    {isCompactLayout ? "Comfort Layout" : "Compact Layout"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={centerCanvas}
-                  >
-                    Center Canvas
-                  </button>
-                </>
-              )}
-              <button type="button" onClick={downloadPng}>
-                Download PNG
-              </button>
-              <button
-                type="button"
-                onClick={() => selectedEmployeeId && togglePinnedEmployee(selectedEmployeeId)}
-                disabled={!selectedEmployeeId}
-              >
-                {isSelectedPinned ? "Unpin Selected" : "Pin Selected"}
-              </button>
-              <button type="button" onClick={resetToOriginalDirectory}>
-                Reset Directory
-              </button>
-              <button type="button" onClick={() => setShowFilterPanel((current) => !current)}>
-                {showFilterPanel ? "Hide Filters" : "Show Filters"}
-              </button>
-              {READ_ONLY_MODE && (
-                <button type="button" onClick={() => setShowSidePanels((current) => !current)}>
-                  {showSidePanels ? "Hide Panels" : "Show Panels"}
+                  Reset View
                 </button>
-              )}
+                <button type="button" onClick={centerCanvas}>
+                  Center Canvas
+                </button>
+              </div>
+              <div className="toolbar-group toolbar-group-end">
+                <button type="button" onClick={downloadPng}>
+                  Download PNG
+                </button>
+                <button type="button" onClick={() => setShowFilterPanel((current) => !current)}>
+                  {showFilterPanel ? "Hide Filters" : "Show Filters"}
+                </button>
+                <button
+                  type="button"
+                  className={`toolbar-more-btn ${showAdvancedToolbar ? "is-active" : ""}`}
+                  onClick={() => setShowAdvancedToolbar((current) => !current)}
+                  aria-expanded={showAdvancedToolbar}
+                  aria-controls="advanced-toolbar-controls"
+                >
+                  {showAdvancedToolbar ? "Less Controls" : "More Controls"}
+                </button>
+              </div>
             </div>
+            {showAdvancedToolbar && (
+              <div className="toolbar-extra" id="advanced-toolbar-controls">
+                {!READ_ONLY_MODE && (
+                  <>
+                    <button type="button" onClick={() => setIsDepartmentLaneView((current) => !current)}>
+                      {isDepartmentLaneView ? "Hierarchical View" : "Department Lanes"}
+                    </button>
+                    <button type="button" onClick={() => setShowDepartmentHeatmap((current) => !current)}>
+                      {showDepartmentHeatmap ? "Hide Heatmap" : "Department Heatmap"}
+                    </button>
+                    <button type="button" onClick={() => setIsCompactLayout((current) => !current)}>
+                      {isCompactLayout ? "Comfort Layout" : "Compact Layout"}
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={() => selectedEmployeeId && togglePinnedEmployee(selectedEmployeeId)}
+                  disabled={!selectedEmployeeId}
+                >
+                  {isSelectedPinned ? "Unpin Selected" : "Pin Selected"}
+                </button>
+                <button type="button" onClick={resetToOriginalDirectory}>
+                  Reset Directory
+                </button>
+                {READ_ONLY_MODE && (
+                  <button type="button" onClick={() => setShowSidePanels((current) => !current)}>
+                    {showSidePanels ? "Hide Panels" : "Show Panels"}
+                  </button>
+                )}
+              </div>
+            )}
             <div className="toolbar-meta" role="status" aria-live="polite">
               <span>Zoom {zoomPercent}%</span>
               <span>Pan X {Math.round(translate.x)}</span>
@@ -966,39 +1005,63 @@ export default function App() {
               setHoverPosition(null);
             }}
           >
-            <div
-              style={{
-                width: '100%',
-                height: '100%',
-                cursor: isDragging ? 'grabbing' : 'grab',
-                overflow: 'hidden',
-                userSelect: 'none'
-              }}
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseUp}
-            >
-              <div style={{
-                transform: `translate(${translate.x}px, ${translate.y}px) scale(${zoom})`,
-                transformOrigin: '0 0',
-                transition: isDragging ? 'none' : 'transform 0.5s cubic-bezier(0.16, 1, 0.3, 1)'
-              }}>
-                <OrgChartManual
-                  employees={chartEmployees}
-                  isDepartmentLaneView={isDepartmentLaneView}
-                  showDepartmentHeatmap={showDepartmentHeatmap}
-                  selectedEmployeeId={selectedEmployeeId}
-                  hoveredEmployeeId={hoveredEmployeeId}
-                  onSelect={setSelectedEmployeeId}
-                  onHover={setHoveredEmployeeId}
-                  onHoverMove={setHoverPosition}
-                  zoomScale={zoom}
-                  matchingIds={chartMatchingIds}
-                  onDimensionsChange={setChartDims}
-                />
+            {hasNoResults ? (
+              <div className="chart-empty-state" role="status" aria-live="polite">
+                <h3>No matching employees</h3>
+                <p>Walang results sa selected filters. Try another filter or reset to view all employees.</p>
+                <div className="chart-empty-actions">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetAllFilters();
+                      setDepthLimit(null);
+                      setShowFilterPanel(true);
+                    }}
+                  >
+                    Reset Filters
+                  </button>
+                  <button type="button" onClick={() => setShowFilterPanel(true)}>
+                    Open Filters
+                  </button>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  cursor: isDragging ? "grabbing" : "grab",
+                  overflow: "hidden",
+                  userSelect: "none"
+                }}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+              >
+                <div
+                  style={{
+                    transform: `translate(${translate.x}px, ${translate.y}px) scale(${zoom})`,
+                    transformOrigin: "0 0",
+                    transition: isDragging ? "none" : "transform 0.5s cubic-bezier(0.16, 1, 0.3, 1)"
+                  }}
+                >
+                  <OrgChartManual
+                    employees={chartEmployees}
+                    isDepartmentLaneView={isDepartmentLaneView}
+                    showDepartmentHeatmap={showDepartmentHeatmap}
+                    selectedEmployeeId={selectedEmployeeId}
+                    hoveredEmployeeId={hoveredEmployeeId}
+                    onSelect={setSelectedEmployeeId}
+                    onHover={setHoveredEmployeeId}
+                    onHoverMove={setHoverPosition}
+                    zoomScale={zoom}
+                    matchingIds={chartMatchingIds}
+                    onDimensionsChange={setChartDims}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {showFilterPanel && (

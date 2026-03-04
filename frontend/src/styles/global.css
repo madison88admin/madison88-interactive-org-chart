@@ -1181,9 +1181,11 @@ body {
 
 .hero-header-right {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding-top: 0.3rem;
+  gap: 0.38rem;
+  padding-top: 0.15rem;
 }
 
 .hero-header-right h2 {
@@ -1216,6 +1218,22 @@ body {
 .hero-header-right h2::after {
   right: -38px;
   transform: translateY(-50%) scaleX(-1);
+}
+
+.scope-label {
+  margin: 0;
+  max-width: min(42vw, 320px);
+  border-radius: 999px;
+  padding: 0.24rem 0.62rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #d6ecf9;
+  border: 1px solid rgba(150, 199, 223, 0.45);
+  background: rgba(15, 38, 57, 0.5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .header-tools {
@@ -1374,6 +1392,26 @@ body {
 
 .chart-toolbar {
   display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.45rem;
+}
+
+.toolbar-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.toolbar-group-end {
+  margin-left: auto;
+}
+
+.toolbar-extra {
+  margin-top: 0.45rem;
+  padding-top: 0.42rem;
+  border-top: 1px solid rgba(140, 196, 223, 0.25);
+  display: flex;
   flex-wrap: wrap;
   gap: 0.45rem;
 }
@@ -1395,6 +1433,7 @@ body {
 }
 
 .chart-toolbar button,
+.toolbar-extra button,
 .chip,
 .link-btn,
 .filter-panel button,
@@ -1411,6 +1450,7 @@ body {
 }
 
 .chart-toolbar button:hover,
+.toolbar-extra button:hover,
 .chip:hover,
 .link-btn:hover,
 .ghost-btn:hover,
@@ -1445,6 +1485,57 @@ body {
   width: 100%;
   height: 100%;
   min-height: 580px;
+}
+
+.chart-empty-state {
+  height: 100%;
+  min-height: 580px;
+  display: grid;
+  place-content: center;
+  gap: 0.5rem;
+  padding: 1.1rem;
+  text-align: center;
+}
+
+.chart-empty-state h3 {
+  margin: 0;
+  color: #d8edf9;
+  font-size: 1.08rem;
+  font-weight: 800;
+}
+
+.chart-empty-state p {
+  margin: 0;
+  color: #b9d9ea;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  max-width: 460px;
+}
+
+.chart-empty-actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.chart-empty-actions button {
+  border-radius: 0.68rem;
+  border: 1px solid rgba(147, 199, 224, 0.52);
+  background: rgba(20, 47, 66, 0.72);
+  color: #ddf1ff;
+  font-weight: 700;
+  font-size: 0.83rem;
+  line-height: 1.25;
+  padding: 0.44rem 0.68rem;
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.chart-empty-actions button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(102, 210, 255, 0.72);
+  background: rgba(26, 57, 79, 0.9);
+  box-shadow: 0 10px 24px rgba(2, 13, 21, 0.32);
 }
 
 .role-band {
@@ -1629,6 +1720,13 @@ body {
   color: #032134;
   background: linear-gradient(145deg, #5fd0ff, #2bb9f1);
   border-color: rgba(156, 225, 252, 0.82);
+}
+
+.chip:disabled {
+  opacity: 0.46;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 .details-panel {
@@ -1946,8 +2044,20 @@ body {
   }
 
   .chart-toolbar {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .toolbar-group,
+  .toolbar-group-end,
+  .toolbar-extra {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+
+  .toolbar-group-end {
+    margin-left: 0;
   }
 
   .filter-drawer {
@@ -1985,6 +2095,18 @@ body {
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
+}
+
+.toolbar-extra button:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.toolbar-more-btn.is-active {
+  border-color: rgba(105, 212, 255, 0.82);
+  background: rgba(32, 72, 98, 0.92);
 }
 
 .toolbar-select {
