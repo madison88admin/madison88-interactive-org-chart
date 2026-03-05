@@ -921,6 +921,9 @@ export default function App() {
     if (!localPersistenceEnabled) {
       return;
     }
+    if (sharedSyncEnabled && !sharedLoadCompleted) {
+      return;
+    }
     try {
       const updatedAt = new Date().toISOString();
       localDraftUpdatedAtRef.current = updatedAt;
@@ -934,7 +937,7 @@ export default function App() {
     } catch {
       // Ignore persistence errors in restricted/private environments.
     }
-  }, [employees, localPersistenceEnabled]);
+  }, [employees, localPersistenceEnabled, sharedLoadCompleted, sharedSyncEnabled]);
 
   useEffect(() => {
     if (!localPersistenceEnabled) {
@@ -987,7 +990,7 @@ export default function App() {
     const pollRemoteEmployees = async () => {
       try {
         const remotePayload = await loadSharedEmployees();
-        if (cancelled || !remotePayload.data || remotePayload.data.length === 0) {
+        if (cancelled || !remotePayload.data) {
           return;
         }
 
