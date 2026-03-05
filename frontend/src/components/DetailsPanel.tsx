@@ -36,6 +36,7 @@ interface DetailsPanelProps {
   onAddEmployee: (input: NewEmployeeInput) => void;
   onUpdateEmployee: (input: UpdateEmployeeInput) => void;
   onDeleteEmployee: (id: string) => void;
+  onUploadPhoto?: (file: File, employeeId?: string) => Promise<string>;
   onNotify: (message: string, title?: string) => void;
   readonlyMode?: boolean;
   isHoverPreview?: boolean;
@@ -129,10 +130,11 @@ const sanitizeRegionalRoles = (
   return roles;
 };
 
-const normalizePhotoFile = (file: File): Promise<string> =>
+const normalizePhotoFile = (file: File): Promise<File> =>
   new Promise((resolve, reject) => {
     const image = new Image();
     const objectUrl = URL.createObjectURL(file);
+    const originalName = file.name.replace(/\.[^.]+$/, "") || "employee-photo";
 
     image.onload = () => {
       const canvas = document.createElement("canvas");
@@ -160,9 +162,22 @@ const normalizePhotoFile = (file: File): Promise<string> =>
       context.fillRect(0, 0, STANDARD_PHOTO_SIZE, STANDARD_PHOTO_SIZE);
       context.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
 
-      const normalizedDataUrl = canvas.toDataURL("image/webp", 0.9);
-      URL.revokeObjectURL(objectUrl);
-      resolve(normalizedDataUrl);
+      canvas.toBlob(
+        (blob) => {
+          URL.revokeObjectURL(objectUrl);
+          if (!blob) {
+            reject(new Error("Unable to process image."));
+            return;
+          }
+          resolve(
+            new File([blob], `${originalName}.webp`, {
+              type: "image/webp"
+            })
+          );
+        },
+        "image/webp",
+        0.9
+      );
     };
 
     image.onerror = () => {
@@ -180,6 +195,7 @@ export function DetailsPanel({
   onAddEmployee,
   onUpdateEmployee,
   onDeleteEmployee,
+  onUploadPhoto,
   onNotify,
   readonlyMode = false,
   isHoverPreview = false
@@ -197,6 +213,7 @@ export function DetailsPanel({
   const [formManagerSearch, setFormManagerSearch] = useState("");
   const [formRegionalRoles, setFormRegionalRoles] = useState<RegionalRoleDraft[]>([]);
   const [formPhoto, setFormPhoto] = useState("");
+  const [isFormPhotoUploading, setIsFormPhotoUploading] = useState(false);
   const [editName, setEditName] = useState("");
   const [editTitle, setEditTitle] = useState("");
   const [editDepartment, setEditDepartment] = useState("");
@@ -208,6 +225,7 @@ export function DetailsPanel({
   const [editManagerSearch, setEditManagerSearch] = useState("");
   const [editRegionalRoles, setEditRegionalRoles] = useState<RegionalRoleDraft[]>([]);
   const [editPhoto, setEditPhoto] = useState("");
+  const [isEditPhotoUploading, setIsEditPhotoUploading] = useState(false);
   const isMutatingDisabled = isHoverPreview;
   const locationOptions = useMemo(
     () =>
@@ -246,7 +264,12 @@ export function DetailsPanel({
     }
   }, [isMutatingDisabled]);
 
-  const handlePhotoSelection = async (file: File | null, setPhoto: (value: string) => void) => {
+  const handlePhotoSelection = async (
+    file: File | null,
+    setPhoto: (value: string) => void,
+    setUploading: (value: boolean) => void,
+    employeeId?: string
+  ) => {
     if (!file) {
       return;
     }
@@ -259,10 +282,24 @@ export function DetailsPanel({
       return;
     }
     try {
-      const photoDataUrl = await normalizePhotoFile(file);
-      setPhoto(photoDataUrl);
+      setUploading(true);
+      const normalizedPhotoFile = await normalizePhotoFile(file);
+      if (onUploadPhoto) {
+        const uploadedPhotoUrl = await onUploadPhoto(normalizedPhotoFile, employeeId);
+        setPhoto(uploadedPhotoUrl);
+      } else {
+        const reader = new FileReader();
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          reader.onload = () => resolve(String(reader.result ?? ""));
+          reader.onerror = () => reject(new Error("Unable to read image file."));
+          reader.readAsDataURL(normalizedPhotoFile);
+        });
+        setPhoto(dataUrl);
+      }
     } catch {
-      onNotify("Unable to load the selected image.", "Upload Error");
+      onNotify("Unable to upload the selected image.", "Upload Error");
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -557,10 +594,11 @@ export function DetailsPanel({
                   <input
                     type="file"
                     accept="image/*"
+                    disabled={isFormPhotoUploading}
                     onChange={async (event) => {
                       const picker = event.currentTarget;
                       const file = picker.files?.[0] ?? null;
-                      await handlePhotoSelection(file, setFormPhoto);
+                      await handlePhotoSelection(file, setFormPhoto, setIsFormPhotoUploading);
                       picker.value = "";
                     }}
                   />
@@ -568,12 +606,13 @@ export function DetailsPanel({
                     <button
                       type="button"
                       className="ghost-btn"
-                      disabled={!formPhoto}
+                      disabled={!formPhoto || isFormPhotoUploading}
                       onClick={() => setFormPhoto("")}
                     >
                       Remove photo
                     </button>
                   </div>
+                  {isFormPhotoUploading && <small className="form-note">Uploading photo...</small>}
                 </div>
               </div>
               <small className="form-note form-photo-note">Optional. Upload JPG/PNG/WebP up to 2 MB. Uploaded photos are auto-fit to the system size.</small>
@@ -744,10 +783,16 @@ export function DetailsPanel({
                   <input
                     type="file"
                     accept="image/*"
+                    disabled={isEditPhotoUploading}
                     onChange={async (event) => {
                       const picker = event.currentTarget;
                       const file = picker.files?.[0] ?? null;
-                      await handlePhotoSelection(file, setEditPhoto);
+                      await handlePhotoSelection(
+                        file,
+                        setEditPhoto,
+                        setIsEditPhotoUploading,
+                        persistedSelectedEmployee.id
+                      );
                       picker.value = "";
                     }}
                   />
@@ -755,12 +800,13 @@ export function DetailsPanel({
                     <button
                       type="button"
                       className="ghost-btn"
-                      disabled={!editPhoto}
+                      disabled={!editPhoto || isEditPhotoUploading}
                       onClick={() => setEditPhoto("")}
                     >
                       Remove photo
                     </button>
                   </div>
+                  {isEditPhotoUploading && <small className="form-note">Uploading photo...</small>}
                 </div>
               </div>
               <small className="form-note form-photo-note">Upload a new image, keep existing, or remove photo to use default avatar. Uploaded photos are auto-fit to the system size.</small>

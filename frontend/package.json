@@ -10,8 +10,10 @@
   },
   "dependencies": {
     "@netlify/blobs": "^8.1.0",
+    "@supabase/supabase-js": "^2.49.8",
     "axios": "^1.7.2",
     "html-to-image": "^1.11.13",
+    "jspdf": "^2.5.2",
     "lucide-react": "^0.441.0",
     "react": "^18.3.1",
     "react-d3-tree": "^3.6.5",

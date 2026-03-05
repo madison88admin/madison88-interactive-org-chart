@@ -49,3 +49,25 @@ The app now supports shared employee/image updates for all users through a Netli
 - Default deployed mode remains view-only.
 - Open with `?readonly=0` to edit and save shared changes.
 - Shared updates become visible to all users after refresh.
+
+## Supabase database mode (recommended)
+
+You can switch shared hierarchy storage from Netlify Blobs to Supabase Postgres + Supabase Storage.
+
+1. In Supabase SQL Editor, run:
+   - `supabase/schema.sql` (shared employees/hierarchy table)
+   - `supabase/storage.sql` (photo bucket and policies)
+2. In `frontend/.env`, set:
+   - `VITE_SUPABASE_URL=...`
+   - `VITE_SUPABASE_ANON_KEY=...`
+   - `VITE_SUPABASE_ORG_TABLE=org_shared_state` (optional)
+   - `VITE_SUPABASE_ORG_ROW_ID=employees` (optional)
+   - `VITE_SUPABASE_PHOTO_BUCKET=org-photos` (optional)
+3. Restart frontend (`npm run dev`).
+
+The app is configured for Supabase-first shared data flow:
+- shared org hierarchy/data is stored in Supabase Postgres table
+- photos are uploaded to Supabase Storage
+- all viewers sync via shared data polling
+
+Without Supabase env vars, shared sync is disabled and the app will show a Supabase configuration warning.

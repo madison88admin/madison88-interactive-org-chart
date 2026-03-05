@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toPng } from "html-to-image";
+import { toJpeg, toPng } from "html-to-image";
+import { jsPDF } from "jspdf";
 import employeesData from "./data/employees.json";
 import { DetailsPanel } from "./components/DetailsPanel";
 import { FilterPanel } from "./components/FilterPanel";
@@ -10,6 +11,8 @@ import { OrgChartManual } from "./components/OrgChartManual";
 import type { NewEmployeeInput } from "./components/DetailsPanel";
 import type { UpdateEmployeeInput } from "./components/DetailsPanel";
 import { loadSharedEmployees, saveSharedEmployees } from "./services/sharedEmployees";
+import { uploadEmployeePhoto } from "./services/photoStorage";
+import { hasSupabaseConfig } from "./services/supabaseClient";
 import { APP_BUILD_ID, avatarFallback } from "./utils/photo";
 import {
   allEmployeeLocations,
@@ -157,7 +160,7 @@ const IS_PRODUCTION_BUILD = !import.meta.env.DEV;
 export default function App() {
   const persistOverride = useMemo(() => readBooleanQueryParam("persist"), []);
   const readonlyOverride = useMemo(() => readBooleanQueryParam("readonly"), []);
-  const sharedSyncEnabled = IS_PRODUCTION_BUILD;
+  const sharedSyncEnabled = hasSupabaseConfig();
   const localPersistenceEnabled = persistOverride ?? true;
   const initialLocalCache = useMemo(
     () => (localPersistenceEnabled ? readLocalEmployeesCache() : null),
@@ -241,6 +244,7 @@ export default function App() {
   const [urlSyncReady, setUrlSyncReady] = useState(false);
   const [zoom, setZoom] = useState(0.55);
   const [translate, setTranslate] = useState({ x: 500, y: 90 });
+  const [isExporting, setIsExporting] = useState(false);
   const closeSystemModal = useCallback(() => {
     modalActionRef.current = null;
     setModalState((current) => ({ ...current, open: false, linkValue: "" }));
@@ -291,6 +295,16 @@ export default function App() {
   useEffect(() => {
     employeesRef.current = employees;
   }, [employees]);
+
+  useEffect(() => {
+    if (sharedSyncEnabled) {
+      return;
+    }
+    showInfoModal(
+      "Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable shared org data.",
+      "Supabase Required"
+    );
+  }, [sharedSyncEnabled, showInfoModal]);
 
   useEffect(() => {
     if (!sharedSyncEnabled) {
@@ -698,49 +712,105 @@ export default function App() {
     }
   }, [showInfoModal]);
 
+  const captureFullChartImage = useCallback(
+    async (backgroundColor: string) => {
+      const surface = wrapperRef.current;
+      if (!surface) {
+        throw new Error("Chart surface is unavailable.");
+      }
+
+      const waitForPaint = async () =>
+        new Promise<void>((resolve) => {
+          window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => resolve());
+          });
+        });
+
+      const previousZoom = zoom;
+      const previousTranslate = translate;
+
+      try {
+        setIsExporting(true);
+        await waitForPaint();
+
+        const exportWidth = Math.max(1, surface.clientWidth);
+        const exportHeight = Math.max(1, surface.clientHeight);
+        const exportRoot = surface.querySelector(".org-export-root") as HTMLElement | null;
+        const contentWidth = Math.max(1, Math.ceil(exportRoot?.offsetWidth ?? chartDims.width));
+        const contentHeight = Math.max(1, Math.ceil(exportRoot?.offsetHeight ?? chartDims.height));
+        const padding = 42;
+        const fittedZoom = Math.max(
+          0.12,
+          Math.min((exportWidth - padding) / contentWidth, (exportHeight - padding) / contentHeight, 1.2)
+        );
+        const fittedTranslate = {
+          x: (exportWidth - contentWidth * fittedZoom) / 2,
+          y: Math.max(12, (exportHeight - contentHeight * fittedZoom) / 2)
+        };
+
+        setZoom(fittedZoom);
+        setTranslate(fittedTranslate);
+        await waitForPaint();
+
+        const dataUrl = await toJpeg(surface, {
+          cacheBust: true,
+          pixelRatio: 2,
+          backgroundColor,
+          width: exportWidth,
+          height: exportHeight,
+          quality: 0.98
+        });
+        return { dataUrl, width: exportWidth, height: exportHeight };
+      } finally {
+        setZoom(previousZoom);
+        setTranslate(previousTranslate);
+        await waitForPaint();
+        setIsExporting(false);
+      }
+    },
+    [chartDims.height, chartDims.width, translate, zoom]
+  );
+
+  const uploadPhotoToSupabase = useCallback(
+    async (file: File, employeeId?: string) => {
+      return uploadEmployeePhoto(file, employeeId);
+    },
+    []
+  );
+
   const exportPdf = useCallback(async () => {
-    const surface = wrapperRef.current;
-    if (!surface) {
+    if (!wrapperRef.current) {
       showInfoModal("Unable to export PDF right now. Please try again.", "Export");
       return;
     }
 
     try {
-      const imageData = await toPng(surface, {
-        cacheBust: true,
-        pixelRatio: 2,
-        backgroundColor: "#071723"
+      const { dataUrl, width, height } = await captureFullChartImage("#ffffff");
+      const pdf = new jsPDF({
+        orientation: "landscape",
+        unit: "mm",
+        format: "a3",
+        compress: true
       });
-      const printWindow = window.open("", "_blank", "noopener,noreferrer");
-      if (!printWindow) {
-        showInfoModal("Popup blocked. Allow popups to export PDF.", "Export");
-        return;
-      }
-      printWindow.document.write(`
-        <!doctype html>
-        <html>
-          <head>
-            <title>Madison88 Org Chart PDF</title>
-            <style>
-              html, body { margin: 0; padding: 0; background: #071723; }
-              img { width: 100%; height: auto; display: block; }
-              @page { margin: 8mm; }
-            </style>
-          </head>
-          <body>
-            <img src="${imageData}" alt="Madison88 Org Chart Export" />
-            <script>
-              window.onload = function () { window.print(); };
-            </script>
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
+
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const imageRatio = width / height;
+      const pageRatio = pageWidth / pageHeight;
+      const renderWidth = imageRatio > pageRatio ? pageWidth : pageHeight * imageRatio;
+      const renderHeight = imageRatio > pageRatio ? pageWidth / imageRatio : pageHeight;
+      const offsetX = (pageWidth - renderWidth) / 2;
+      const offsetY = (pageHeight - renderHeight) / 2;
+
+      pdf.setFillColor(255, 255, 255);
+      pdf.rect(0, 0, pageWidth, pageHeight, "F");
+      pdf.addImage(dataUrl, "JPEG", offsetX, offsetY, renderWidth, renderHeight, undefined, "FAST");
+      pdf.save(`madison88-org-view-${new Date().toISOString().slice(0, 10)}.pdf`);
     } catch (error) {
       console.error("Failed to export PDF", error);
-      showInfoModal("PDF export failed. Please try Print and Save as PDF.", "Export");
+      showInfoModal("PDF export failed. Please try again.", "Export");
     }
-  }, [showInfoModal]);
+  }, [captureFullChartImage, showInfoModal]);
 
   const printChart = useCallback(() => {
     window.print();
@@ -907,6 +977,47 @@ export default function App() {
       window.clearTimeout(syncTimer);
     };
   }, [employees, isReadOnlyView, sharedLoadCompleted, sharedSyncEnabled, showInfoModal]);
+
+  useEffect(() => {
+    if (!sharedSyncEnabled || !sharedLoadCompleted) {
+      return;
+    }
+
+    let cancelled = false;
+    const pollRemoteEmployees = async () => {
+      try {
+        const remotePayload = await loadSharedEmployees();
+        if (cancelled || !remotePayload.data || remotePayload.data.length === 0) {
+          return;
+        }
+
+        const normalizedRemoteEmployees = inferHierarchy(remotePayload.data);
+        const remoteSnapshot = JSON.stringify(normalizedRemoteEmployees);
+        const localSnapshot = JSON.stringify(employeesRef.current);
+        if (remoteSnapshot === localSnapshot) {
+          return;
+        }
+
+        const remoteUpdatedAt = parseTimestamp(remotePayload.updatedAt);
+        const localUpdatedAt = parseTimestamp(localDraftUpdatedAtRef.current);
+        if (remoteUpdatedAt >= localUpdatedAt) {
+          lastSharedSnapshotRef.current = remoteSnapshot;
+          setEmployees(normalizedRemoteEmployees);
+        }
+      } catch {
+        // Ignore transient polling errors.
+      }
+    };
+
+    const intervalId = window.setInterval(() => {
+      void pollRemoteEmployees();
+    }, 10000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [sharedLoadCompleted, sharedSyncEnabled]);
 
   useEffect(() => {
     if (depthLimit && depthLimit > maxVisibleDepth) {
@@ -1531,20 +1642,20 @@ export default function App() {
                   style={{
                     transform: `translate(${translate.x}px, ${translate.y}px) scale(${zoom})`,
                     transformOrigin: "0 0",
-                    transition: isDragging ? "none" : "transform 0.5s cubic-bezier(0.16, 1, 0.3, 1)"
+                    transition: isDragging || isExporting ? "none" : "transform 0.5s cubic-bezier(0.16, 1, 0.3, 1)"
                   }}
                 >
                   <OrgChartManual
                     employees={chartEmployees}
-                    isDepartmentLaneView={isDepartmentLaneView}
-                    isCompactLayout={isCompactLayout}
+                    isDepartmentLaneView={isExporting ? true : isDepartmentLaneView}
+                    isCompactLayout={isExporting ? false : isCompactLayout}
                     showDepartmentHeatmap={showDepartmentHeatmap}
                     selectedEmployeeId={selectedEmployeeId}
                     hoveredEmployeeId={hoveredEmployeeId}
                     onSelect={setSelectedEmployeeId}
                     onHover={setHoveredEmployeeId}
                     onHoverMove={setHoverPosition}
-                    zoomScale={zoom}
+                    zoomScale={isExporting ? Math.max(zoom, 0.95) : zoom}
                     matchingIds={chartMatchingIds}
                     onDimensionsChange={setChartDims}
                   />
@@ -1630,6 +1741,7 @@ export default function App() {
           onAddEmployee={addEmployee}
           onUpdateEmployee={updateEmployee}
           onDeleteEmployee={deleteEmployee}
+          onUploadPhoto={uploadPhotoToSupabase}
           onNotify={showInfoModal}
           readonlyMode={isReadOnlyView}
           isHoverPreview={isReadOnlyView && Boolean(hoveredEmployee)}
