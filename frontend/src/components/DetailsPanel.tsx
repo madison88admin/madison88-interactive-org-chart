@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { directReportIds, managerFor, type Employee, type RegionalRole } from "../utils/org";
+import { resolveEmployeePhoto } from "../utils/photo";
 
 export interface NewEmployeeInput {
   name: string;
@@ -57,8 +58,6 @@ const STATUS_FORM_OPTIONS: Array<{ value: Employee["status"]; label: string }> =
 const MAX_PHOTO_FILE_SIZE = 2 * 1024 * 1024;
 const STANDARD_PHOTO_SIZE = 320;
 const MANAGER_PLACEHOLDER_VALUES = new Set(["__selected__", "__current__", "__none__"]);
-const avatarFallback = (name: string) =>
-  `https://ui-avatars.com/api/?name=${encodeURIComponent(name).replace(/%20/g, "+")}&background=2C5F7C&color=fff`;
 type RegionalRoleDraft = { location: string; title: string; department: string };
 
 const managerMatchesSearch = (employee: Employee, query: string) => {
@@ -285,14 +284,15 @@ export function DetailsPanel({
   const regionalRoles = [...(selectedEmployee.regionalRoles ?? [])]
     .filter((entry) => entry.location?.trim() && entry.title?.trim())
     .sort((left, right) => left.location.localeCompare(right.location));
-  const selectedFallbackPhoto = avatarFallback(selectedEmployee.name);
+  const selectedPhoto = resolveEmployeePhoto(selectedEmployee.photo, selectedEmployee.name, selectedEmployee.id);
+  const selectedFallbackPhoto = resolveEmployeePhoto("", selectedEmployee.name, `fallback-${selectedEmployee.id}`);
 
   return (
     <aside className="details-panel">
       {isHoverPreview && <p className="hover-preview-tag">Hover Preview</p>}
       <div className="details-head">
         <img
-          src={selectedEmployee.photo || selectedFallbackPhoto}
+          src={selectedPhoto}
           alt={selectedEmployee.name}
           loading="lazy"
           onError={(event) => {

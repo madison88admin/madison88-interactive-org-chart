@@ -1,4 +1,5 @@
 import { getRoleLevel, type Employee, type EmployeeStatus, type RoleLevel } from "../utils/org";
+import { resolveEmployeePhoto } from "../utils/photo";
 
 const STATUS_LABEL: Record<EmployeeStatus, string> = {
   standard: "Standard",
@@ -22,9 +23,6 @@ const ROLE_CLASS: Record<RoleLevel, string> = {
   Staff: "member",
   "Assoc. Staff": "member"
 };
-const avatarFallback = (name: string) =>
-  `https://ui-avatars.com/api/?name=${encodeURIComponent(name).replace(/%20/g, "+")}&background=2C5F7C&color=fff`;
-
 interface EmployeeCardProps {
   employee: Employee;
   selected: boolean;
@@ -49,7 +47,8 @@ export function EmployeeCard({
   const statusClass = employee.status === "standard" ? "" : `status-${employee.status}`;
   const isLowZoom = compact && zoomScale < 0.5;
   const isVeryLowZoom = compact && zoomScale < 0.4;
-  const fallbackPhoto = avatarFallback(employee.name);
+  const fallbackPhoto = resolveEmployeePhoto("", employee.name, `fallback-${employee.id}`);
+  const photoSrc = resolveEmployeePhoto(employee.photo, employee.name, employee.id);
   const levelClass = ROLE_CLASS[getRoleLevel(employee.title)];
 
   return (
@@ -66,7 +65,7 @@ export function EmployeeCard({
       aria-label={`View ${employee.name}`}
     >
       <img
-        src={employee.photo || fallbackPhoto}
+        src={photoSrc}
         alt={employee.name}
         className="employee-photo"
         loading="lazy"

@@ -9,6 +9,7 @@ import { SearchBar } from "./components/SearchBar";
 import { OrgChartManual } from "./components/OrgChartManual";
 import type { NewEmployeeInput } from "./components/DetailsPanel";
 import type { UpdateEmployeeInput } from "./components/DetailsPanel";
+import { APP_BUILD_ID, avatarFallback } from "./utils/photo";
 import {
   allEmployeeLocations,
   resolveEmployeeForLocation,
@@ -25,10 +26,37 @@ import {
 } from "./utils/org";
 
 const rawEmployees = employeesData as Employee[];
-const EMPLOYEES_STORAGE_KEY = "madison88_employees_v1";
+const EMPLOYEES_STORAGE_PREFIX = "madison88_employees";
+const hashString = (value: string) => {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+};
+const EMPLOYEES_DATA_SIGNATURE = hashString(
+  rawEmployees
+    .map((employee) =>
+      [
+        employee.id,
+        employee.name,
+        employee.title,
+        employee.department,
+        employee.location,
+        employee.email,
+        employee.startDate,
+        employee.status,
+        employee.managerId ?? "",
+        employee.photo,
+        JSON.stringify(employee.regionalRoles ?? [])
+      ].join("|")
+    )
+    .join("~")
+);
+const EMPLOYEES_STORAGE_KEY = `${EMPLOYEES_STORAGE_PREFIX}_${APP_BUILD_ID}_${EMPLOYEES_DATA_SIGNATURE}`;
 const HISTORY_LIMIT = 40;
-const generatedAvatarPhoto = (name: string) =>
-  `https://ui-avatars.com/api/?name=${encodeURIComponent(name).replace(/%20/g, "+")}&background=2C5F7C&color=fff`;
+const generatedAvatarPhoto = (name: string) => avatarFallback(name);
 const normalizeLocationKey = (value: string) => value.trim().toLowerCase();
 const normalizeRegionalRoles = (roles: Employee["regionalRoles"], baseLocation: string): Employee["regionalRoles"] => {
   if (!roles || roles.length === 0) {
@@ -61,9 +89,29 @@ type ModalMode = "info" | "confirm";
 type ModalTone = "primary" | "danger";
 type ScopeMode = "global" | "regional" | "departmental";
 
+const readBooleanQueryParam = (key: string): boolean | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const value = new URLSearchParams(window.location.search).get(key);
+  if (value === "1") {
+    return true;
+  }
+  if (value === "0") {
+    return false;
+  }
+  return null;
+};
+
+const LIVE_READONLY_DEFAULT = !import.meta.env.DEV;
+const IS_PRODUCTION_BUILD = !import.meta.env.DEV;
+
 export default function App() {
+  const persistOverride = useMemo(() => (IS_PRODUCTION_BUILD ? null : readBooleanQueryParam("persist")), []);
+  const readonlyOverride = useMemo(() => (IS_PRODUCTION_BUILD ? null : readBooleanQueryParam("readonly")), []);
+  const localPersistenceEnabled = !IS_PRODUCTION_BUILD && (persistOverride ?? true);
   const [employees, setEmployees] = useState<Employee[]>(() => {
-    if (typeof window !== "undefined") {
+    if (localPersistenceEnabled && typeof window !== "undefined") {
       try {
         const saved = window.localStorage.getItem(EMPLOYEES_STORAGE_KEY);
         if (saved) {
@@ -120,10 +168,10 @@ export default function App() {
   const [isTabletViewport, setIsTabletViewport] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [isReadOnlyView, setIsReadOnlyView] = useState(() => {
-    if (typeof window === "undefined") {
-      return false;
+    if (IS_PRODUCTION_BUILD) {
+      return true;
     }
-    return new URLSearchParams(window.location.search).get("readonly") === "1";
+    return readonlyOverride ?? LIVE_READONLY_DEFAULT;
   });
   const [modalState, setModalState] = useState<{
     open: boolean;
@@ -700,12 +748,28 @@ export default function App() {
   }, [fitView, viewMode, department, location, quickFilters, executiveOnly, roleLevel, searchQuery]);
 
   useEffect(() => {
+    if (!localPersistenceEnabled) {
+      return;
+    }
     try {
       window.localStorage.setItem(EMPLOYEES_STORAGE_KEY, JSON.stringify(employees));
     } catch {
       // Ignore persistence errors in restricted/private environments.
     }
-  }, [employees]);
+  }, [employees, localPersistenceEnabled]);
+
+  useEffect(() => {
+    if (!localPersistenceEnabled) {
+      return;
+    }
+    try {
+      Object.keys(window.localStorage)
+        .filter((key) => key.startsWith(`${EMPLOYEES_STORAGE_PREFIX}_`) && key !== EMPLOYEES_STORAGE_KEY)
+        .forEach((key) => window.localStorage.removeItem(key));
+    } catch {
+      // Ignore persistence cleanup errors in restricted/private environments.
+    }
+  }, [localPersistenceEnabled]);
 
   useEffect(() => {
     if (depthLimit && depthLimit > maxVisibleDepth) {
@@ -973,11 +1037,19 @@ export default function App() {
       setSearchQuery(query);
     }
 
-    setIsReadOnlyView(readonly === "1");
+    if (IS_PRODUCTION_BUILD) {
+      setIsReadOnlyView(true);
+    } else if (readonly === "1" || readonly === "0") {
+      setIsReadOnlyView(readonly === "1");
+    } else if (readonlyOverride !== null) {
+      setIsReadOnlyView(readonlyOverride);
+    } else {
+      setIsReadOnlyView(LIVE_READONLY_DEFAULT);
+    }
     setShowFilterPanel(params.get("filters") !== "0");
     hasInitializedFromUrl.current = true;
     setUrlSyncReady(true);
-  }, [activateRegionalScope, applyAllEmployeesPreset, applyDepartmentPreset, applyLeadershipPreset]);
+  }, [activateRegionalScope, applyAllEmployeesPreset, applyDepartmentPreset, applyLeadershipPreset, readonlyOverride]);
 
   useEffect(() => {
     if (!urlSyncReady) {
@@ -1003,14 +1075,21 @@ export default function App() {
     if (showFilterPanel) {
       params.set("filters", "1");
     }
-    if (isReadOnlyView) {
+    if (!IS_PRODUCTION_BUILD && persistOverride !== null) {
+      params.set("persist", persistOverride ? "1" : "0");
+    }
+    if (IS_PRODUCTION_BUILD) {
+      params.set("readonly", "1");
+    } else if (readonlyOverride !== null) {
+      params.set("readonly", isReadOnlyView ? "1" : "0");
+    } else if (isReadOnlyView) {
       params.set("readonly", "1");
     }
 
     const queryString = params.toString();
     const nextUrl = queryString ? `${window.location.pathname}?${queryString}` : window.location.pathname;
     window.history.replaceState({}, "", nextUrl);
-  }, [urlSyncReady, executiveOnly, roleLevel, viewMode, isReadOnlyView, searchQuery, showFilterPanel]);
+  }, [urlSyncReady, executiveOnly, roleLevel, viewMode, isReadOnlyView, searchQuery, showFilterPanel, persistOverride, readonlyOverride]);
 
   // Custom interaction handlers for the manual chart
   const [isDragging, setIsDragging] = useState(false);

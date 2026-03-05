@@ -1,4 +1,5 @@
 import { directReportIds, managerFor, type Employee } from "../utils/org";
+import { resolveEmployeePhoto } from "../utils/photo";
 
 interface HoverTooltipProps {
   employee: Employee;
@@ -9,6 +10,8 @@ interface HoverTooltipProps {
 export function HoverTooltip({ employee, employees, position }: HoverTooltipProps) {
   const manager = managerFor(employees, employee.id);
   const reportCount = directReportIds(employees, employee.id).length;
+  const photoSrc = resolveEmployeePhoto(employee.photo, employee.name, employee.id);
+  const fallbackPhoto = resolveEmployeePhoto("", employee.name, `fallback-${employee.id}`);
 
   const left = Math.min(position.x + 18, window.innerWidth - 260);
   const top = Math.min(position.y + 18, window.innerHeight - 190);
@@ -21,7 +24,15 @@ export function HoverTooltip({ employee, employees, position }: HoverTooltipProp
       aria-live="polite"
     >
       <div className="hover-tooltip-head">
-        <img src={employee.photo} alt={employee.name} loading="lazy" />
+        <img
+          src={photoSrc}
+          alt={employee.name}
+          loading="lazy"
+          onError={(event) => {
+            event.currentTarget.onerror = null;
+            event.currentTarget.src = fallbackPhoto;
+          }}
+        />
         <div>
           <p className="hover-tooltip-name">{employee.name}</p>
           <p className="hover-tooltip-title">{employee.title}</p>

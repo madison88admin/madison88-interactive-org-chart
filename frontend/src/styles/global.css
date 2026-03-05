@@ -2972,3 +2972,180 @@ body {
     display: none !important;
   }
 }
+
+/* Circular node refresh */
+.chart-surface {
+  box-shadow: inset 0 0 0 1px rgba(147, 205, 231, 0.18), 0 18px 36px rgba(2, 11, 18, 0.32);
+}
+
+.chart-surface::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 6%, rgba(114, 214, 255, 0.2), rgba(114, 214, 255, 0) 46%);
+}
+
+.node-shell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.node-shell .employee-card {
+  width: 100%;
+  min-height: 100%;
+  height: 100%;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0.2rem 0.1rem 0.1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.34rem;
+  color: #eff9ff;
+  overflow: visible;
+  --node-ring-color: rgba(166, 217, 243, 0.92);
+}
+
+.node-shell .employee-card::before {
+  display: none !important;
+}
+
+.node-shell .employee-card:hover,
+.node-shell .employee-card:focus-visible,
+.node-shell .employee-card.is-selected {
+  transform: translateY(-2px);
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+.node-shell .employee-photo {
+  width: 4.45rem;
+  height: 4.45rem;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 2px solid rgba(241, 250, 255, 0.96);
+  background: rgba(10, 28, 42, 0.82);
+  box-shadow:
+    0 0 0 3px rgba(8, 30, 45, 0.84),
+    0 0 0 6px var(--node-ring-color),
+    0 14px 30px rgba(2, 13, 21, 0.55);
+  transition: transform 0.24s ease, box-shadow 0.24s ease, border-color 0.24s ease;
+}
+
+.node-shell .employee-card:hover .employee-photo,
+.node-shell .employee-card:focus-visible .employee-photo {
+  transform: translateY(-1px) scale(1.05);
+  box-shadow:
+    0 0 0 3px rgba(8, 30, 45, 0.88),
+    0 0 0 8px var(--node-ring-color),
+    0 16px 34px rgba(2, 13, 21, 0.62);
+}
+
+.node-shell .employee-card.is-selected .employee-photo {
+  border-color: rgba(248, 253, 255, 0.98);
+  box-shadow:
+    0 0 0 3px rgba(8, 30, 45, 0.9),
+    0 0 0 10px rgba(95, 224, 255, 0.52),
+    0 18px 36px rgba(2, 13, 21, 0.66);
+}
+
+.node-shell .employee-card.not-match {
+  opacity: 0.35;
+  filter: grayscale(0.92);
+  transform: scale(0.95);
+}
+
+.node-shell .employee-card.not-match:hover {
+  transform: scale(0.95);
+}
+
+.node-shell .employee-content {
+  width: 100%;
+  min-width: 0;
+  text-align: center;
+  padding: 0 0.24rem;
+  border: 0;
+  background: transparent;
+}
+
+.node-shell .employee-content h3 {
+  margin: 0;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: #e8f7ff;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.node-shell .employee-title {
+  margin: 0.06rem 0 0;
+  font-size: 0.56rem;
+  font-weight: 700;
+  color: rgba(206, 233, 248, 0.95);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.node-shell .employee-department,
+.node-shell .status-pill {
+  display: none !important;
+}
+
+.node-shell .employee-card.role-executive {
+  --node-ring-color: rgba(75, 202, 255, 0.95);
+}
+
+.node-shell .employee-card.role-vp {
+  --node-ring-color: rgba(95, 167, 255, 0.95);
+}
+
+.node-shell .employee-card.role-director {
+  --node-ring-color: rgba(123, 201, 255, 0.95);
+}
+
+.node-shell .employee-card.role-manager {
+  --node-ring-color: rgba(96, 221, 149, 0.95);
+}
+
+.node-shell .employee-card.role-lead {
+  --node-ring-color: rgba(248, 209, 97, 0.95);
+}
+
+.node-shell .employee-card.role-member {
+  --node-ring-color: rgba(190, 221, 239, 0.92);
+}
+
+.node-shell .employee-card.status-promoted {
+  --node-ring-color: rgba(255, 215, 0, 0.95);
+}
+
+.node-shell .employee-card.status-enhanced {
+  --node-ring-color: rgba(0, 206, 209, 0.95);
+}
+
+.node-shell .employee-card.status-new_hire {
+  --node-ring-color: rgba(144, 238, 144, 0.95);
+}
+
+.node-shell .employee-card.status-vacant .employee-photo {
+  filter: grayscale(1);
+  opacity: 0.68;
+  border-style: dashed;
+}
+
+.node-shell .employee-card.zoom-low .employee-title {
+  display: none;
+}
+
+.node-shell .employee-card.zoom-very-low .employee-content h3,
+.node-shell .employee-card.zoom-very-low .employee-title {
+  display: none;
+}
