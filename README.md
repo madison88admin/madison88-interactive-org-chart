@@ -39,3 +39,13 @@ When editing reporting lines, only change `managerId` and keep ids stable.
 - Department and role-level headcount summaries
 - Responsive desktop/tablet/mobile layout
 - Keyboard-focus states and screen-reader labels
+
+## Shared live edits on Netlify
+
+The app now supports shared employee/image updates for all users through a Netlify Function + Netlify Blobs store.
+
+- Function endpoint: `/.netlify/functions/employees`
+- Store file key: `employees` (inside the `madison88_org_chart` blob store)
+- Default deployed mode remains view-only.
+- Open with `?readonly=0` to edit and save shared changes.
+- Shared updates become visible to all users after refresh.

@@ -5,6 +5,7 @@ export const APP_BUILD_ID =
 
 const CACHE_PARAM = "v";
 const NON_CACHEABLE_SCHEMES = /^(data:|blob:)/i;
+const RELATIVE_URL_PREFIXES = ["/", "./", "../"];
 
 const splitHash = (value: string): [string, string] => {
   const hashIndex = value.indexOf("#");
@@ -27,6 +28,9 @@ export const appendCacheBuster = (url: string, token = APP_BUILD_ID): string => 
   if (!trimmed || NON_CACHEABLE_SCHEMES.test(trimmed) || !token) {
     return trimmed;
   }
+  if (!shouldCacheBust(trimmed)) {
+    return trimmed;
+  }
 
   const [withoutHash, hash] = splitHash(trimmed);
   const [path, query] = splitQuery(withoutHash);
@@ -35,6 +39,28 @@ export const appendCacheBuster = (url: string, token = APP_BUILD_ID): string => 
   const nextQuery = params.toString();
 
   return `${path}${nextQuery ? `?${nextQuery}` : ""}${hash ? `#${hash}` : ""}`;
+};
+
+const shouldCacheBust = (url: string): boolean => {
+  if (RELATIVE_URL_PREFIXES.some((prefix) => url.startsWith(prefix))) {
+    return true;
+  }
+
+  try {
+    const parsed = new URL(url);
+    if (!/^https?:$/i.test(parsed.protocol)) {
+      return false;
+    }
+    if (parsed.hostname === "ui-avatars.com") {
+      return true;
+    }
+    if (typeof window !== "undefined") {
+      return parsed.origin === window.location.origin;
+    }
+    return false;
+  } catch {
+    return false;
+  }
 };
 
 export const avatarFallback = (name: string) =>

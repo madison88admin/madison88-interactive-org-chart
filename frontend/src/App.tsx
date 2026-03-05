@@ -9,6 +9,7 @@ import { SearchBar } from "./components/SearchBar";
 import { OrgChartManual } from "./components/OrgChartManual";
 import type { NewEmployeeInput } from "./components/DetailsPanel";
 import type { UpdateEmployeeInput } from "./components/DetailsPanel";
+import { loadSharedEmployees, saveSharedEmployees } from "./services/sharedEmployees";
 import { APP_BUILD_ID, avatarFallback } from "./utils/photo";
 import {
   allEmployeeLocations,
@@ -109,7 +110,8 @@ const IS_PRODUCTION_BUILD = !import.meta.env.DEV;
 export default function App() {
   const persistOverride = useMemo(() => readBooleanQueryParam("persist"), []);
   const readonlyOverride = useMemo(() => readBooleanQueryParam("readonly"), []);
-  const localPersistenceEnabled = IS_PRODUCTION_BUILD ? (persistOverride ?? false) : (persistOverride ?? true);
+  const sharedSyncEnabled = IS_PRODUCTION_BUILD;
+  const localPersistenceEnabled = !IS_PRODUCTION_BUILD && (persistOverride ?? true);
   const [employees, setEmployees] = useState<Employee[]>(() => {
     if (localPersistenceEnabled && typeof window !== "undefined") {
       try {
@@ -190,6 +192,9 @@ export default function App() {
     linkValue: ""
   });
   const modalActionRef = useRef<(() => void) | null>(null);
+  const [sharedLoadCompleted, setSharedLoadCompleted] = useState(!sharedSyncEnabled);
+  const lastSharedSnapshotRef = useRef<string | null>(null);
+  const sharedSyncErrorShownRef = useRef(false);
   const [urlSyncReady, setUrlSyncReady] = useState(false);
   const [zoom, setZoom] = useState(0.55);
   const [translate, setTranslate] = useState({ x: 500, y: 90 });
@@ -239,6 +244,46 @@ export default function App() {
     setModalState((current) => ({ ...current, open: false, linkValue: "" }));
     action?.();
   }, []);
+
+  useEffect(() => {
+    if (!sharedSyncEnabled) {
+      setSharedLoadCompleted(true);
+      return;
+    }
+
+    let cancelled = false;
+
+    const hydrateFromSharedStore = async () => {
+      try {
+        const remoteEmployees = await loadSharedEmployees();
+        if (cancelled) {
+          return;
+        }
+
+        if (remoteEmployees && remoteEmployees.length > 0) {
+          const normalizedRemoteEmployees = inferHierarchy(remoteEmployees);
+          lastSharedSnapshotRef.current = JSON.stringify(normalizedRemoteEmployees);
+          setEmployees(normalizedRemoteEmployees);
+        } else {
+          lastSharedSnapshotRef.current = JSON.stringify(inferHierarchy(rawEmployees));
+        }
+      } catch (error) {
+        console.error("Failed to load shared employees", error);
+        lastSharedSnapshotRef.current = JSON.stringify(inferHierarchy(rawEmployees));
+      } finally {
+        if (!cancelled) {
+          setSharedLoadCompleted(true);
+        }
+      }
+    };
+
+    void hydrateFromSharedStore();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sharedSyncEnabled]);
+
   const focusEmployeeInChart = useCallback((employeeId: string) => {
     setSelectedEmployeeId(employeeId);
     setHoveredEmployeeId(null);
@@ -769,6 +814,35 @@ export default function App() {
   }, [localPersistenceEnabled]);
 
   useEffect(() => {
+    if (!sharedSyncEnabled || !sharedLoadCompleted || isReadOnlyView) {
+      return;
+    }
+
+    const snapshot = JSON.stringify(employees);
+    if (snapshot === lastSharedSnapshotRef.current) {
+      return;
+    }
+
+    const syncTimer = window.setTimeout(async () => {
+      try {
+        await saveSharedEmployees(employees);
+        lastSharedSnapshotRef.current = snapshot;
+        sharedSyncErrorShownRef.current = false;
+      } catch (error) {
+        console.error("Failed to save shared employees", error);
+        if (!sharedSyncErrorShownRef.current) {
+          showInfoModal("Unable to sync changes for all users right now. Please try again in a moment.", "Sync Error");
+          sharedSyncErrorShownRef.current = true;
+        }
+      }
+    }, 500);
+
+    return () => {
+      window.clearTimeout(syncTimer);
+    };
+  }, [employees, isReadOnlyView, sharedLoadCompleted, sharedSyncEnabled, showInfoModal]);
+
+  useEffect(() => {
     if (depthLimit && depthLimit > maxVisibleDepth) {
       setDepthLimit(maxVisibleDepth);
     }
@@ -1070,7 +1144,7 @@ export default function App() {
     if (showFilterPanel) {
       params.set("filters", "1");
     }
-    if (persistOverride !== null) {
+    if (!IS_PRODUCTION_BUILD && persistOverride !== null) {
       params.set("persist", persistOverride ? "1" : "0");
     }
     if (readonlyOverride !== null) {
