@@ -7,6 +7,11 @@ type SharedEmployeesResponse = {
   updatedAt?: string;
 };
 
+export type SharedEmployeesPayload = {
+  data: Employee[] | null;
+  updatedAt: string | null;
+};
+
 const asEmployees = (value: unknown): Employee[] | null => {
   if (!Array.isArray(value)) {
     return null;
@@ -14,7 +19,7 @@ const asEmployees = (value: unknown): Employee[] | null => {
   return value as Employee[];
 };
 
-export const loadSharedEmployees = async (): Promise<Employee[] | null> => {
+export const loadSharedEmployees = async (): Promise<SharedEmployeesPayload> => {
   const response = await fetch(SHARED_EMPLOYEES_ENDPOINT, {
     method: "GET",
     cache: "no-store",
@@ -24,7 +29,7 @@ export const loadSharedEmployees = async (): Promise<Employee[] | null> => {
   });
 
   if (response.status === 404) {
-    return null;
+    return { data: null, updatedAt: null };
   }
   if (!response.ok) {
     throw new Error(`Shared load failed (${response.status})`);
@@ -32,10 +37,10 @@ export const loadSharedEmployees = async (): Promise<Employee[] | null> => {
 
   const body = (await response.json()) as SharedEmployeesResponse;
   const employees = asEmployees(body.data);
-  if (!employees || employees.length === 0) {
-    return null;
-  }
-  return employees;
+  return {
+    data: employees && employees.length > 0 ? employees : null,
+    updatedAt: typeof body.updatedAt === "string" ? body.updatedAt : null
+  };
 };
 
 export const saveSharedEmployees = async (employees: Employee[]): Promise<void> => {

@@ -57,6 +57,53 @@ const EMPLOYEES_DATA_SIGNATURE = hashString(
 );
 const EMPLOYEES_STORAGE_KEY = `${EMPLOYEES_STORAGE_PREFIX}_${APP_BUILD_ID}_${EMPLOYEES_DATA_SIGNATURE}`;
 const HISTORY_LIMIT = 40;
+type LocalEmployeesCache = {
+  data: Employee[];
+  updatedAt: string | null;
+};
+
+const parseTimestamp = (value: string | null | undefined): number => {
+  if (!value) {
+    return 0;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const readLocalEmployeesCache = (): LocalEmployeesCache | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const saved = window.localStorage.getItem(EMPLOYEES_STORAGE_KEY);
+  if (!saved) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(saved) as unknown;
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return {
+        data: inferHierarchy(parsed as Employee[]),
+        updatedAt: null
+      };
+    }
+    if (parsed && typeof parsed === "object") {
+      const payload = parsed as { data?: unknown; updatedAt?: unknown };
+      if (Array.isArray(payload.data) && payload.data.length > 0) {
+        return {
+          data: inferHierarchy(payload.data as Employee[]),
+          updatedAt: typeof payload.updatedAt === "string" ? payload.updatedAt : null
+        };
+      }
+    }
+  } catch {
+    // Fallback to bundled data when local storage is unavailable or invalid.
+  }
+
+  return null;
+};
+
 const generatedAvatarPhoto = (name: string) => avatarFallback(name);
 const normalizeLocationKey = (value: string) => value.trim().toLowerCase();
 const normalizeRegionalRoles = (roles: Employee["regionalRoles"], baseLocation: string): Employee["regionalRoles"] => {
@@ -111,23 +158,18 @@ export default function App() {
   const persistOverride = useMemo(() => readBooleanQueryParam("persist"), []);
   const readonlyOverride = useMemo(() => readBooleanQueryParam("readonly"), []);
   const sharedSyncEnabled = IS_PRODUCTION_BUILD;
-  const localPersistenceEnabled = !IS_PRODUCTION_BUILD && (persistOverride ?? true);
+  const localPersistenceEnabled = persistOverride ?? true;
+  const initialLocalCache = useMemo(
+    () => (localPersistenceEnabled ? readLocalEmployeesCache() : null),
+    [localPersistenceEnabled]
+  );
   const [employees, setEmployees] = useState<Employee[]>(() => {
-    if (localPersistenceEnabled && typeof window !== "undefined") {
-      try {
-        const saved = window.localStorage.getItem(EMPLOYEES_STORAGE_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved) as Employee[];
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            return inferHierarchy(parsed);
-          }
-        }
-      } catch {
-        // Fallback to bundled data when local storage is unavailable or invalid.
-      }
+    if (initialLocalCache?.data && initialLocalCache.data.length > 0) {
+      return initialLocalCache.data;
     }
     return inferHierarchy(rawEmployees);
   });
+  const employeesRef = useRef(employees);
   const [historyPast, setHistoryPast] = useState<Employee[][]>([]);
   const [historyFuture, setHistoryFuture] = useState<Employee[][]>([]);
   const [depthLimit, setDepthLimit] = useState<number | null>(null);
@@ -194,6 +236,7 @@ export default function App() {
   const modalActionRef = useRef<(() => void) | null>(null);
   const [sharedLoadCompleted, setSharedLoadCompleted] = useState(!sharedSyncEnabled);
   const lastSharedSnapshotRef = useRef<string | null>(null);
+  const localDraftUpdatedAtRef = useRef<string | null>(initialLocalCache?.updatedAt ?? null);
   const sharedSyncErrorShownRef = useRef(false);
   const [urlSyncReady, setUrlSyncReady] = useState(false);
   const [zoom, setZoom] = useState(0.55);
@@ -246,6 +289,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    employeesRef.current = employees;
+  }, [employees]);
+
+  useEffect(() => {
     if (!sharedSyncEnabled) {
       setSharedLoadCompleted(true);
       return;
@@ -255,15 +302,26 @@ export default function App() {
 
     const hydrateFromSharedStore = async () => {
       try {
-        const remoteEmployees = await loadSharedEmployees();
+        const remotePayload = await loadSharedEmployees();
         if (cancelled) {
           return;
         }
 
+        const remoteEmployees = remotePayload.data;
         if (remoteEmployees && remoteEmployees.length > 0) {
           const normalizedRemoteEmployees = inferHierarchy(remoteEmployees);
-          lastSharedSnapshotRef.current = JSON.stringify(normalizedRemoteEmployees);
-          setEmployees(normalizedRemoteEmployees);
+          const remoteSnapshot = JSON.stringify(normalizedRemoteEmployees);
+          const localSnapshot = JSON.stringify(employeesRef.current);
+          const remoteUpdatedAt = parseTimestamp(remotePayload.updatedAt);
+          const localUpdatedAt = parseTimestamp(localDraftUpdatedAtRef.current);
+
+          if (localSnapshot !== remoteSnapshot && localUpdatedAt > remoteUpdatedAt) {
+            // Keep newer local draft and let sync effect push it to shared storage.
+            lastSharedSnapshotRef.current = remoteSnapshot;
+          } else {
+            lastSharedSnapshotRef.current = remoteSnapshot;
+            setEmployees(normalizedRemoteEmployees);
+          }
         } else {
           lastSharedSnapshotRef.current = JSON.stringify(inferHierarchy(rawEmployees));
         }
@@ -794,7 +852,15 @@ export default function App() {
       return;
     }
     try {
-      window.localStorage.setItem(EMPLOYEES_STORAGE_KEY, JSON.stringify(employees));
+      const updatedAt = new Date().toISOString();
+      localDraftUpdatedAtRef.current = updatedAt;
+      window.localStorage.setItem(
+        EMPLOYEES_STORAGE_KEY,
+        JSON.stringify({
+          data: employees,
+          updatedAt
+        })
+      );
     } catch {
       // Ignore persistence errors in restricted/private environments.
     }
