@@ -107,9 +107,9 @@ const LIVE_READONLY_DEFAULT = !import.meta.env.DEV;
 const IS_PRODUCTION_BUILD = !import.meta.env.DEV;
 
 export default function App() {
-  const persistOverride = useMemo(() => (IS_PRODUCTION_BUILD ? null : readBooleanQueryParam("persist")), []);
-  const readonlyOverride = useMemo(() => (IS_PRODUCTION_BUILD ? null : readBooleanQueryParam("readonly")), []);
-  const localPersistenceEnabled = !IS_PRODUCTION_BUILD && (persistOverride ?? true);
+  const persistOverride = useMemo(() => readBooleanQueryParam("persist"), []);
+  const readonlyOverride = useMemo(() => readBooleanQueryParam("readonly"), []);
+  const localPersistenceEnabled = IS_PRODUCTION_BUILD ? (persistOverride ?? false) : (persistOverride ?? true);
   const [employees, setEmployees] = useState<Employee[]>(() => {
     if (localPersistenceEnabled && typeof window !== "undefined") {
       try {
@@ -168,9 +168,6 @@ export default function App() {
   const [isTabletViewport, setIsTabletViewport] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [isReadOnlyView, setIsReadOnlyView] = useState(() => {
-    if (IS_PRODUCTION_BUILD) {
-      return true;
-    }
     return readonlyOverride ?? LIVE_READONLY_DEFAULT;
   });
   const [modalState, setModalState] = useState<{
@@ -1037,9 +1034,7 @@ export default function App() {
       setSearchQuery(query);
     }
 
-    if (IS_PRODUCTION_BUILD) {
-      setIsReadOnlyView(true);
-    } else if (readonly === "1" || readonly === "0") {
+    if (readonly === "1" || readonly === "0") {
       setIsReadOnlyView(readonly === "1");
     } else if (readonlyOverride !== null) {
       setIsReadOnlyView(readonlyOverride);
@@ -1075,12 +1070,10 @@ export default function App() {
     if (showFilterPanel) {
       params.set("filters", "1");
     }
-    if (!IS_PRODUCTION_BUILD && persistOverride !== null) {
+    if (persistOverride !== null) {
       params.set("persist", persistOverride ? "1" : "0");
     }
-    if (IS_PRODUCTION_BUILD) {
-      params.set("readonly", "1");
-    } else if (readonlyOverride !== null) {
+    if (readonlyOverride !== null) {
       params.set("readonly", isReadOnlyView ? "1" : "0");
     } else if (isReadOnlyView) {
       params.set("readonly", "1");
