@@ -538,7 +538,7 @@ export default function App() {
     () => visibleEmployees.find((employee: Employee) => employee.id === hoveredEmployeeId) ?? null,
     [visibleEmployees, hoveredEmployeeId]
   );
-  const detailsEmployee = hoveredEmployee ?? selectedEmployee;
+  const detailsEmployee = isReadOnlyView ? hoveredEmployee ?? selectedEmployee : selectedEmployee;
   const suggestions = useMemo(() => searchSuggestions(contextualEmployees, searchQuery), [contextualEmployees, searchQuery]);
   const scopeLabel = useMemo(() => {
     if (viewMode === "individual" && selectedEmployee) {
@@ -1632,7 +1632,7 @@ export default function App() {
           onDeleteEmployee={deleteEmployee}
           onNotify={showInfoModal}
           readonlyMode={isReadOnlyView}
-          isHoverPreview={Boolean(hoveredEmployee)}
+          isHoverPreview={isReadOnlyView && Boolean(hoveredEmployee)}
         />
       </main>
       {hoveredEmployee && hoverPosition && (
