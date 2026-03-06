@@ -786,16 +786,18 @@ export default function App() {
 
     try {
       const { dataUrl, width, height } = await captureFullChartImage("#ffffff");
+      const imageRatio = width / height;
+      const basePageHeight = 297;
+      const dynamicPageWidth = Math.max(420, Math.min(2000, Math.round(basePageHeight * imageRatio)));
       const pdf = new jsPDF({
         orientation: "landscape",
         unit: "mm",
-        format: "a3",
+        format: [dynamicPageWidth, basePageHeight],
         compress: true
       });
 
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-      const imageRatio = width / height;
       const pageRatio = pageWidth / pageHeight;
       const renderWidth = imageRatio > pageRatio ? pageWidth : pageHeight * imageRatio;
       const renderHeight = imageRatio > pageRatio ? pageWidth / imageRatio : pageHeight;
@@ -1651,6 +1653,7 @@ export default function App() {
                   <OrgChartManual
                     employees={chartEmployees}
                     isDepartmentLaneView={isExporting ? true : isDepartmentLaneView}
+                    exportMode={isExporting}
                     isCompactLayout={isExporting ? false : isCompactLayout}
                     showDepartmentHeatmap={showDepartmentHeatmap}
                     selectedEmployeeId={selectedEmployeeId}

@@ -14,6 +14,7 @@ import {
 interface OrgChartManualProps {
     employees: Employee[];
     isDepartmentLaneView: boolean;
+    exportMode?: boolean;
     isCompactLayout?: boolean;
     showDepartmentHeatmap?: boolean;
     selectedEmployeeId: string | null;
@@ -37,6 +38,7 @@ const departmentHue = (department: string) => {
 export function OrgChartManual({
     employees,
     isDepartmentLaneView,
+    exportMode = false,
     isCompactLayout = true,
     showDepartmentHeatmap = false,
     selectedEmployeeId,
@@ -187,8 +189,9 @@ export function OrgChartManual({
             .sort((left, right) => left.top - right.top);
     }, [nodeHeight, nodeWidth, nodesArray, showDepartmentHeatmap]);
 
-    const canvasWidth = maxX + nodeWidth + 200;
-    const canvasHeight = maxY + nodeHeight + 200;
+    const canvasPadding = exportMode ? 36 : 200;
+    const canvasWidth = maxX + nodeWidth + canvasPadding;
+    const canvasHeight = maxY + nodeHeight + canvasPadding;
 
     React.useEffect(() => {
         onDimensionsChange?.({ width: canvasWidth, height: canvasHeight });
