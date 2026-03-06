@@ -3167,7 +3167,16 @@ body {
   background: #ffffff !important;
 }
 
+.org-export-root.export-mode {
+  background: #ffffff !important;
+}
+
 .chart-surface.is-exporting .org-link {
+  stroke: rgba(51, 81, 102, 0.72) !important;
+  stroke-width: 2.2 !important;
+}
+
+.org-export-root.export-mode .org-link {
   stroke: rgba(51, 81, 102, 0.72) !important;
   stroke-width: 2.2 !important;
 }
@@ -3180,7 +3189,24 @@ body {
   padding: 0.24rem 0.26rem !important;
 }
 
+.org-export-root.export-mode .node-shell .employee-card {
+  border: 1px solid rgba(116, 145, 168, 0.78) !important;
+  border-radius: 0.55rem;
+  background: #ffffff !important;
+  box-shadow: 0 2px 6px rgba(6, 24, 37, 0.12) !important;
+  padding: 0.24rem 0.26rem !important;
+}
+
 .chart-surface.is-exporting .node-shell .employee-photo {
+  width: 2.2rem !important;
+  height: 2.2rem !important;
+  border-width: 1.4px !important;
+  border-color: rgba(104, 137, 162, 0.85) !important;
+  background: #f2f7fb !important;
+  box-shadow: none !important;
+}
+
+.org-export-root.export-mode .node-shell .employee-photo {
   width: 2.2rem !important;
   height: 2.2rem !important;
   border-width: 1.4px !important;
@@ -3204,7 +3230,31 @@ body {
   -webkit-box-orient: vertical !important;
 }
 
+.org-export-root.export-mode .node-shell .employee-content h3 {
+  color: #0f2a3f !important;
+  text-shadow: none !important;
+  text-transform: none !important;
+  font-size: 0.62rem !important;
+  line-height: 1.16 !important;
+  letter-spacing: 0 !important;
+  white-space: normal !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2 !important;
+  -webkit-box-orient: vertical !important;
+}
+
 .chart-surface.is-exporting .node-shell .employee-title {
+  display: block !important;
+  color: #345268 !important;
+  text-shadow: none !important;
+  font-size: 0.54rem !important;
+  line-height: 1.14 !important;
+  margin-top: 0.04rem !important;
+}
+
+.org-export-root.export-mode .node-shell .employee-title {
   display: block !important;
   color: #345268 !important;
   text-shadow: none !important;

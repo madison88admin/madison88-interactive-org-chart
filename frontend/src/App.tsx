@@ -726,49 +726,59 @@ export default function App() {
           });
         });
 
-      const previousZoom = zoom;
-      const previousTranslate = translate;
-
       try {
         setIsExporting(true);
         await waitForPaint();
 
-        const exportWidth = Math.max(1, surface.clientWidth);
-        const exportHeight = Math.max(1, surface.clientHeight);
         const exportRoot = surface.querySelector(".org-export-root") as HTMLElement | null;
-        const contentWidth = Math.max(1, Math.ceil(exportRoot?.offsetWidth ?? chartDims.width));
-        const contentHeight = Math.max(1, Math.ceil(exportRoot?.offsetHeight ?? chartDims.height));
-        const padding = 42;
-        const fittedZoom = Math.max(
-          0.12,
-          Math.min((exportWidth - padding) / contentWidth, (exportHeight - padding) / contentHeight, 1.2)
-        );
-        const fittedTranslate = {
-          x: (exportWidth - contentWidth * fittedZoom) / 2,
-          y: Math.max(12, (exportHeight - contentHeight * fittedZoom) / 2)
-        };
-
-        setZoom(fittedZoom);
-        setTranslate(fittedTranslate);
+        if (!exportRoot) {
+          throw new Error("Unable to find export chart root.");
+        }
         await waitForPaint();
 
-        const dataUrl = await toJpeg(surface, {
+        const contentWidth = Math.max(1, Math.ceil(exportRoot.offsetWidth || chartDims.width));
+        const contentHeight = Math.max(1, Math.ceil(exportRoot.offsetHeight || chartDims.height));
+        const padding = 24;
+        const stageWidth = contentWidth + padding * 2;
+        const stageHeight = contentHeight + padding * 2;
+
+        const stage = document.createElement("div");
+        stage.style.position = "fixed";
+        stage.style.left = "-100000px";
+        stage.style.top = "0";
+        stage.style.width = `${stageWidth}px`;
+        stage.style.height = `${stageHeight}px`;
+        stage.style.background = "#ffffff";
+        stage.style.padding = `${padding}px`;
+        stage.style.boxSizing = "border-box";
+        stage.style.overflow = "hidden";
+
+        const clonedRoot = exportRoot.cloneNode(true) as HTMLElement;
+        clonedRoot.classList.add("export-mode");
+        clonedRoot.style.width = `${contentWidth}px`;
+        clonedRoot.style.height = `${contentHeight}px`;
+        clonedRoot.style.transform = "none";
+        clonedRoot.style.transformOrigin = "0 0";
+        stage.appendChild(clonedRoot);
+        document.body.appendChild(stage);
+
+        const dataUrl = await toJpeg(stage, {
           cacheBust: true,
           pixelRatio: 2,
           backgroundColor,
-          width: exportWidth,
-          height: exportHeight,
+          width: stageWidth,
+          height: stageHeight,
           quality: 0.98
         });
-        return { dataUrl, width: exportWidth, height: exportHeight };
+
+        stage.remove();
+        return { dataUrl, width: stageWidth, height: stageHeight };
       } finally {
-        setZoom(previousZoom);
-        setTranslate(previousTranslate);
         await waitForPaint();
         setIsExporting(false);
       }
     },
-    [chartDims.height, chartDims.width, translate, zoom]
+    [chartDims.height, chartDims.width]
   );
 
   const uploadPhotoToSupabase = useCallback(
