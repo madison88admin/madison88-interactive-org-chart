@@ -1580,7 +1580,7 @@ export default function App() {
           </div>
 
           <div
-            className="chart-surface"
+            className={`chart-surface ${isExporting ? "is-exporting" : ""}`}
             ref={wrapperRef}
             onMouseLeave={() => {
               setHoveredEmployeeId(null);

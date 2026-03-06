@@ -199,7 +199,7 @@ export function OrgChartManual({
 
     return (
         <div
-            className="org-export-root"
+            className={`org-export-root ${exportMode ? "export-mode" : ""}`}
             style={{
                 position: "relative",
                 width: `${canvasWidth}px`,
