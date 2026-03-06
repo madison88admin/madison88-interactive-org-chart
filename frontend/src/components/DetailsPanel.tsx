@@ -296,8 +296,9 @@ export function DetailsPanel({
         });
         setPhoto(dataUrl);
       }
-    } catch {
-      onNotify("Unable to upload the selected image.", "Upload Error");
+    } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : "Unable to upload the selected image.";
+      onNotify(message, "Upload Error");
     } finally {
       setUploading(false);
     }
