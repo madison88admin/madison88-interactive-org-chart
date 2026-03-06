@@ -202,7 +202,12 @@ function setPosition(node: LayoutNode, config: LayoutConfig, centerX: number, to
  * Roots are placed normally at depth 0 and 1.
  * Level 3+ employees are stacked vertically under their department head.
  */
-export function calculateDepartmentLaneLayout(root: LayoutNode, config: LayoutConfig): void {
+export function calculateDepartmentLaneLayout(
+    root: LayoutNode,
+    config: LayoutConfig,
+    rootColumnLimit?: number,
+    stackStartDepth = 1
+): void {
     // Pre-process: we treat all depth=1 nodes as roots of vertical lanes.
     // Their children will just flow straight down under them.
 
@@ -237,7 +242,7 @@ export function calculateDepartmentLaneLayout(root: LayoutNode, config: LayoutCo
 
         if (node.children.length === 0) return;
 
-        if (depth >= 1) {
+        if (depth >= stackStartDepth) {
             // Stack vertically right below
             let currentY = topY + modifiedConfig.nodeHeight + modifiedConfig.levelGap;
             for (const child of node.children) {
@@ -248,18 +253,32 @@ export function calculateDepartmentLaneLayout(root: LayoutNode, config: LayoutCo
                 currentY += calculateVerticalSpan(child, modifiedConfig) + modifiedConfig.levelGap;
             }
         } else {
-            // Spread horizontally
-            let totalChildrenWidth = 0;
-            for (const child of node.children) {
-                totalChildrenWidth += child.subtreeWidth;
+            // Root-level children can be wrapped into rows for export readability.
+            const maxColumns = Math.max(1, Math.min(rootColumnLimit ?? node.children.length, node.children.length));
+            const children = node.children;
+            const rows: LayoutNode[][] = [];
+            for (let i = 0; i < children.length; i += maxColumns) {
+                rows.push(children.slice(i, i + maxColumns));
             }
-            totalChildrenWidth += (node.children.length - 1) * modifiedConfig.siblingGap;
 
-            let currentX = centerX - (totalChildrenWidth / 2);
-            for (const child of node.children) {
-                const childCenterX = currentX + (child.subtreeWidth / 2);
-                setLanePosition(child, childCenterX, topY + modifiedConfig.nodeHeight + modifiedConfig.levelGap, depth + 1);
-                currentX += child.subtreeWidth + modifiedConfig.siblingGap;
+            const horizontalGap = modifiedConfig.siblingGap;
+            const rowGap = Math.round(modifiedConfig.levelGap * 0.9);
+            let currentRowTop = topY + modifiedConfig.nodeHeight + modifiedConfig.levelGap;
+
+            for (const row of rows) {
+                const rowWidth =
+                    row.length * modifiedConfig.nodeWidth +
+                    Math.max(0, row.length - 1) * horizontalGap;
+                const rowStartX = centerX - rowWidth / 2 + modifiedConfig.nodeWidth / 2;
+                let rowMaxSpan = modifiedConfig.nodeHeight;
+
+                row.forEach((child, index) => {
+                    const childCenterX = rowStartX + index * (modifiedConfig.nodeWidth + horizontalGap);
+                    setLanePosition(child, childCenterX, currentRowTop, depth + 1);
+                    rowMaxSpan = Math.max(rowMaxSpan, calculateVerticalSpan(child, modifiedConfig));
+                });
+
+                currentRowTop += rowMaxSpan + rowGap;
             }
         }
     };

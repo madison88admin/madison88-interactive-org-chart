@@ -53,15 +53,15 @@ export function OrgChartManual({
     const layoutConfig: LayoutConfig = isCompactLayout ? COMPACT_LAYOUT_CONFIG : COMFORT_LAYOUT_CONFIG;
 
     // 1. Build and calculate layout based on mode
-    const { root, orphans, nodesArray, maxX, maxY } = useMemo(() => {
+    const { root, orphans, nodesArray, minX, minY, maxX, maxY } = useMemo(() => {
         const { root, orphans } = buildHierarchicalTree(employees);
         if (!root) {
-            return { root: null, orphans: [], nodesArray: [], maxX: 0, maxY: 0 };
+            return { root: null, orphans: [], nodesArray: [], minX: 0, minY: 0, maxX: 0, maxY: 0 };
         }
 
         let nodesArray: LayoutNode[] = [];
         if (isDepartmentLaneView) {
-            calculateDepartmentLaneLayout(root, layoutConfig);
+            calculateDepartmentLaneLayout(root, layoutConfig, exportMode ? 6 : undefined);
             // Flatten tree for lane view
             const flatten = (n: LayoutNode) => {
                 nodesArray.push(n);
@@ -79,14 +79,23 @@ export function OrgChartManual({
         }
 
         // Find diagram dimensions
-        let maxX = 0;
-        let maxY = 0;
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
         nodesArray.forEach(n => {
-            if (n.x > maxX) maxX = n.x;
-            if (n.y > maxY) maxY = n.y;
+            minX = Math.min(minX, n.x);
+            minY = Math.min(minY, n.y);
+            maxX = Math.max(maxX, n.x + layoutConfig.nodeWidth);
+            maxY = Math.max(maxY, n.y + layoutConfig.nodeHeight);
         });
 
-        return { root, orphans, nodesArray, maxX, maxY };
+        if (!Number.isFinite(minX)) minX = 0;
+        if (!Number.isFinite(minY)) minY = 0;
+        if (!Number.isFinite(maxX)) maxX = layoutConfig.nodeWidth;
+        if (!Number.isFinite(maxY)) maxY = layoutConfig.nodeHeight;
+
+        return { root, orphans, nodesArray, minX, minY, maxX, maxY };
     }, [employees, isDepartmentLaneView, layoutConfig]);
 
     if (nodesArray.length === 0) {
@@ -189,9 +198,13 @@ export function OrgChartManual({
             .sort((left, right) => left.top - right.top);
     }, [nodeHeight, nodeWidth, nodesArray, showDepartmentHeatmap]);
 
-    const canvasPadding = exportMode ? 36 : 200;
-    const canvasWidth = maxX + nodeWidth + canvasPadding;
-    const canvasHeight = maxY + nodeHeight + canvasPadding;
+    const canvasPadding = exportMode ? 36 : 120;
+    const contentWidth = Math.max(nodeWidth, maxX - minX);
+    const contentHeight = Math.max(nodeHeight, maxY - minY);
+    const offsetX = canvasPadding - minX;
+    const offsetY = canvasPadding - minY;
+    const canvasWidth = contentWidth + canvasPadding * 2;
+    const canvasHeight = contentHeight + canvasPadding * 2;
 
     React.useEffect(() => {
         onDimensionsChange?.({ width: canvasWidth, height: canvasHeight });
@@ -213,8 +226,8 @@ export function OrgChartManual({
                     key={lane.key}
                     className="dept-heat-lane"
                     style={{
-                        left: lane.left,
-                        top: lane.top,
+                        left: lane.left + offsetX,
+                        top: lane.top + offsetY,
                         width: lane.width,
                         height: lane.height,
                         background: lane.background,
@@ -234,7 +247,9 @@ export function OrgChartManual({
                     zIndex: 1
                 }}
             >
-                {allEdges}
+                <g transform={`translate(${offsetX}, ${offsetY})`}>
+                    {allEdges}
+                </g>
             </svg>
 
             {/* 2. HTML layer for actual DOM nodes */}
@@ -243,8 +258,8 @@ export function OrgChartManual({
                     key={node.id}
                     style={{
                         position: "absolute",
-                        top: node.y,
-                        left: node.x,
+                        top: node.y + offsetY,
+                        left: node.x + offsetX,
                         width: nodeWidth,
                         height: nodeHeight,
                         transition: "all 0.3s ease",
@@ -271,8 +286,8 @@ export function OrgChartManual({
                     key={`${lane.key}-label`}
                     className="dept-heat-label"
                     style={{
-                        left: lane.left + 10,
-                        top: lane.top + 8,
+                        left: lane.left + 10 + offsetX,
+                        top: lane.top + 8 + offsetY,
                         borderColor: lane.border
                     }}
                 >

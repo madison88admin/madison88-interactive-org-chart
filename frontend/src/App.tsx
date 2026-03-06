@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toJpeg, toPng } from "html-to-image";
+import { toPng } from "html-to-image";
 import { jsPDF } from "jspdf";
 import employeesData from "./data/employees.json";
 import { DetailsPanel } from "./components/DetailsPanel";
@@ -13,6 +13,10 @@ import type { UpdateEmployeeInput } from "./components/DetailsPanel";
 import { loadSharedEmployees, saveSharedEmployees } from "./services/sharedEmployees";
 import { uploadEmployeePhoto } from "./services/photoStorage";
 import { hasSupabaseConfig } from "./services/supabaseClient";
+import {
+  calculateDepartmentLaneLayout,
+  type LayoutNode
+} from "./utils/layout";
 import { APP_BUILD_ID, avatarFallback } from "./utils/photo";
 import {
   allEmployeeLocations,
@@ -244,7 +248,6 @@ export default function App() {
   const [urlSyncReady, setUrlSyncReady] = useState(false);
   const [zoom, setZoom] = useState(0.55);
   const [translate, setTranslate] = useState({ x: 500, y: 90 });
-  const [isExporting, setIsExporting] = useState(false);
   const closeSystemModal = useCallback(() => {
     modalActionRef.current = null;
     setModalState((current) => ({ ...current, open: false, linkValue: "" }));
@@ -712,72 +715,6 @@ export default function App() {
     }
   }, [showInfoModal]);
 
-  const captureFullChartImage = useCallback(
-    async (backgroundColor: string) => {
-      const surface = wrapperRef.current;
-      if (!surface) {
-        throw new Error("Chart surface is unavailable.");
-      }
-
-      const waitForPaint = async () =>
-        new Promise<void>((resolve) => {
-          window.requestAnimationFrame(() => {
-            window.requestAnimationFrame(() => resolve());
-          });
-        });
-
-      try {
-        setIsExporting(true);
-        await waitForPaint();
-
-        const exportRoot = surface.querySelector(".org-export-root") as HTMLElement | null;
-        if (!exportRoot) {
-          throw new Error("Unable to find export chart root.");
-        }
-        await waitForPaint();
-
-        const rect = exportRoot.getBoundingClientRect();
-        const contentWidth = Math.max(
-          1,
-          Math.ceil(exportRoot.scrollWidth || 0),
-          Math.ceil(rect.width || 0),
-          Math.ceil(chartDims.width || 0)
-        );
-        const contentHeight = Math.max(
-          1,
-          Math.ceil(exportRoot.scrollHeight || 0),
-          Math.ceil(rect.height || 0),
-          Math.ceil(chartDims.height || 0)
-        );
-
-        const previousWidth = exportRoot.style.width;
-        const previousHeight = exportRoot.style.height;
-        exportRoot.style.width = `${contentWidth}px`;
-        exportRoot.style.height = `${contentHeight}px`;
-        await waitForPaint();
-
-        try {
-          const dataUrl = await toJpeg(exportRoot, {
-            cacheBust: true,
-            pixelRatio: 2,
-            backgroundColor,
-            width: contentWidth,
-            height: contentHeight,
-            quality: 0.98
-          });
-          return { dataUrl, width: contentWidth, height: contentHeight };
-        } finally {
-          exportRoot.style.width = previousWidth;
-          exportRoot.style.height = previousHeight;
-        }
-      } finally {
-        await waitForPaint();
-        setIsExporting(false);
-      }
-    },
-    [chartDims.height, chartDims.width]
-  );
-
   const uploadPhotoToSupabase = useCallback(
     async (file: File, employeeId?: string) => {
       return uploadEmployeePhoto(file, employeeId);
@@ -792,34 +729,341 @@ export default function App() {
     }
 
     try {
-      const { dataUrl, width, height } = await captureFullChartImage("#ffffff");
-      const imageRatio = width / height;
-      const basePageHeight = 297;
-      const dynamicPageWidth = Math.max(420, Math.min(2000, Math.round(basePageHeight * imageRatio)));
+      const printableEmployees = chartEmployees;
+      if (!printableEmployees || printableEmployees.length === 0) {
+        showInfoModal("No chart data to export.", "Export");
+        return;
+      }
+
+      const byId = new Map<string, LayoutNode>();
+      printableEmployees.forEach((employee) => {
+        byId.set(employee.id, {
+          id: employee.id,
+          employee,
+          children: [],
+          x: 0,
+          y: 0,
+          subtreeWidth: 0
+        });
+      });
+
+      const forestRoots: LayoutNode[] = [];
+      printableEmployees.forEach((employee) => {
+        const node = byId.get(employee.id);
+        if (!node) {
+          return;
+        }
+        const managerNode = employee.managerId ? byId.get(employee.managerId) : undefined;
+        if (managerNode && managerNode.id !== node.id) {
+          managerNode.children.push(node);
+        } else {
+          forestRoots.push(node);
+        }
+      });
+
+      if (forestRoots.length === 0) {
+        showInfoModal("No chart hierarchy available for export.", "Export");
+        return;
+      }
+
+      const anchorEmployee = printableEmployees[0];
+      const syntheticRoot: LayoutNode = {
+        id: "__export_root__",
+        employee: {
+          ...anchorEmployee,
+          id: "__export_root__",
+          name: "Export Root",
+          title: "",
+          managerId: null
+        },
+        children: forestRoots,
+        x: 0,
+        y: 0,
+        subtreeWidth: 0
+      };
+
+      const exportLayoutConfig = {
+        nodeWidth: 172,
+        nodeHeight: 106,
+        levelGap: 34,
+        siblingGap: 20
+      };
+      calculateDepartmentLaneLayout(syntheticRoot, exportLayoutConfig, 5, 2);
+
+      const nodes: LayoutNode[] = [];
+      const flattenNodes = (node: LayoutNode) => {
+        nodes.push(node);
+        node.children.forEach(flattenNodes);
+      };
+      flattenNodes(syntheticRoot);
+      const exportNodes = nodes.filter((node) => node.id !== "__export_root__");
+
+      const depthByNodeId = new Map<string, number>();
+      const assignDepth = (node: LayoutNode, depth: number) => {
+        if (node.id !== "__export_root__") {
+          depthByNodeId.set(node.id, depth);
+        }
+        node.children.forEach((child) => assignDepth(child, depth + 1));
+      };
+      syntheticRoot.children.forEach((child) => assignDepth(child, 1));
+      const maxHierarchyDepth = Math.max(...Array.from(depthByNodeId.values()), 1);
+
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      exportNodes.forEach((node) => {
+        minX = Math.min(minX, node.x);
+        minY = Math.min(minY, node.y);
+        maxX = Math.max(maxX, node.x + exportLayoutConfig.nodeWidth);
+        maxY = Math.max(maxY, node.y + exportLayoutConfig.nodeHeight);
+      });
+
+      const contentWidth = Math.max(1, maxX - minX);
+      const contentHeight = Math.max(1, maxY - minY);
+      const orientation: "portrait" | "landscape" = "landscape";
+      const contentAspectRatio = contentWidth / Math.max(contentHeight, 1);
+      const smallHierarchy = exportNodes.length <= 24;
+      const denseHierarchy = exportNodes.length > 70 || contentAspectRatio < 0.5;
       const pdf = new jsPDF({
-        orientation: "landscape",
+        orientation,
         unit: "mm",
-        format: [dynamicPageWidth, basePageHeight],
+        format: denseHierarchy ? "a1" : smallHierarchy ? "a3" : "a2",
         compress: true
       });
 
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-      const pageRatio = pageWidth / pageHeight;
-      const renderWidth = imageRatio > pageRatio ? pageWidth : pageHeight * imageRatio;
-      const renderHeight = imageRatio > pageRatio ? pageWidth / imageRatio : pageHeight;
-      const offsetX = (pageWidth - renderWidth) / 2;
-      const offsetY = (pageHeight - renderHeight) / 2;
+      const margin = 5;
+      const usableWidth = pageWidth - margin * 2;
+      const usableHeight = pageHeight - margin * 2;
+      const widthScale = usableWidth / Math.max(contentWidth, 1);
+      const heightScale = usableHeight / Math.max(contentHeight, 1);
+      const fitScale = Math.min(widthScale, heightScale);
+      const upscaleCap = smallHierarchy ? 0.68 : exportNodes.length <= 44 ? 0.9 : 1.08;
+      const exportScale = Math.min(fitScale, upscaleCap);
+      const pageAspectRatio = usableWidth / Math.max(usableHeight, 1);
 
-      pdf.setFillColor(255, 255, 255);
-      pdf.rect(0, 0, pageWidth, pageHeight, "F");
-      pdf.addImage(dataUrl, "JPEG", offsetX, offsetY, renderWidth, renderHeight, undefined, "FAST");
+      // Wide-stretch very tall org trees so landscape pages are actually used.
+      const horizontalStretchMultiplier =
+        smallHierarchy
+          ? 1
+          : contentAspectRatio < 0.52
+          ? Math.min(1.95, Math.max(1.2, pageAspectRatio / Math.max(contentAspectRatio, 0.1) * 0.62))
+          : 1.12;
+      const stretchedXScale = Math.min(widthScale, exportScale * horizontalStretchMultiplier);
+
+      const initialsFromName = (name: string): string => {
+        const parts = name
+          .trim()
+          .split(/\s+/)
+          .filter(Boolean);
+        if (parts.length === 0) {
+          return "NA";
+        }
+        if (parts.length === 1) {
+          return parts[0].slice(0, 2).toUpperCase();
+        }
+        return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
+      };
+
+      const asPhotoDataUrl = async (value: string): Promise<string | null> => {
+        const source = value.trim();
+        if (!source) {
+          return null;
+        }
+        if (source.startsWith("data:image/")) {
+          return source;
+        }
+        try {
+          const response = await fetch(source, { mode: "cors", cache: "force-cache" });
+          if (!response.ok) {
+            return null;
+          }
+          const blob = await response.blob();
+          return await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result ?? ""));
+            reader.onerror = () => reject(new Error("photo-read-failed"));
+            reader.readAsDataURL(blob);
+          });
+        } catch {
+          return null;
+        }
+      };
+
+      const photoCache = new Map<string, string | null>();
+      const uniquePhotoSources = Array.from(
+        new Set(
+          exportNodes
+            .map((node) => node.employee.photo?.trim() ?? "")
+            .filter((photo) => Boolean(photo))
+        )
+      );
+      await Promise.all(
+        uniquePhotoSources.map(async (photo) => {
+          photoCache.set(photo, await asPhotoDataUrl(photo));
+        })
+      );
+
+      const drawPage = (
+        pageLeft: number,
+        pageTop: number,
+        xScale: number,
+        yScale: number,
+        offsetX: number,
+        offsetY: number,
+        clipToPage: boolean,
+        pageIndex: number,
+        pageCount: number
+      ) => {
+        const pageRight = pageLeft + usableWidth / xScale;
+        const pageBottom = pageTop + usableHeight / yScale;
+        const intersects = (left: number, top: number, right: number, bottom: number) =>
+          !(right < pageLeft || left > pageRight || bottom < pageTop || top > pageBottom);
+
+        const toPdfX = (value: number) => offsetX + (value - pageLeft) * xScale;
+        const toPdfY = (value: number) => offsetY + (value - pageTop) * yScale;
+        const nodeWidthMm = exportLayoutConfig.nodeWidth * xScale;
+        const nodeHeightMm = exportLayoutConfig.nodeHeight * yScale;
+        const nodeCorner = Math.max(0.8, Math.min(2.2, nodeHeightMm * 0.12));
+        const nameFontSize = Math.max(6.0, Math.min(9.2, nodeHeightMm * 0.2));
+        const titleFontSize = Math.max(5.2, Math.min(7.2, nodeHeightMm * 0.16));
+
+        pdf.setFillColor(255, 255, 255);
+        pdf.rect(0, 0, pageWidth, pageHeight, "F");
+
+        pdf.setLineCap("round");
+        pdf.setLineJoin("round");
+        exportNodes.forEach((node) => {
+          node.children.forEach((child) => {
+            if (child.id === "__export_root__") {
+              return;
+            }
+            const sourceDepth = depthByNodeId.get(node.id) ?? 1;
+            const depthRatio =
+              maxHierarchyDepth > 1 ? (sourceDepth - 1) / (maxHierarchyDepth - 1) : 0;
+            const channel = Math.round(52 + depthRatio * 56);
+            const connectorThickness = Math.max(0.3, Math.min(0.62, 0.58 - depthRatio * 0.16));
+
+            const sx = node.x + exportLayoutConfig.nodeWidth / 2;
+            const sy = node.y + exportLayoutConfig.nodeHeight;
+            const ex = child.x + exportLayoutConfig.nodeWidth / 2;
+            const ey = child.y;
+            if (clipToPage && !intersects(Math.min(sx, ex), Math.min(sy, ey), Math.max(sx, ex), Math.max(sy, ey))) {
+              return;
+            }
+            const startX = toPdfX(sx);
+            const startY = toPdfY(sy);
+            const endX = toPdfX(ex);
+            const endY = toPdfY(ey);
+            const midY = startY + Math.max(1.2, (endY - startY) * 0.45);
+
+            pdf.setDrawColor(channel, channel + 23, channel + 39);
+            pdf.setLineWidth(connectorThickness);
+            pdf.line(startX, startY, startX, midY);
+            pdf.line(startX, midY, endX, midY);
+            pdf.line(endX, midY, endX, endY);
+
+            // Small anchor markers improve readability when lines cross dense sections.
+            pdf.setFillColor(channel, channel + 23, channel + 39);
+            pdf.circle(startX, startY, 0.26, "F");
+            pdf.circle(endX, endY, 0.24, "F");
+          });
+        });
+
+        exportNodes.forEach((node) => {
+          const nx = node.x;
+          const ny = node.y;
+          const nr = node.x + exportLayoutConfig.nodeWidth;
+          const nb = node.y + exportLayoutConfig.nodeHeight;
+          if (clipToPage && !intersects(nx, ny, nr, nb)) {
+            return;
+          }
+
+          const x = toPdfX(node.x);
+          const y = toPdfY(node.y);
+          pdf.setFillColor(255, 255, 255);
+          pdf.setDrawColor(124, 149, 166);
+          pdf.setLineWidth(0.2);
+          pdf.roundedRect(x, y, nodeWidthMm, nodeHeightMm, nodeCorner, nodeCorner, "FD");
+
+          const textMarginX = Math.max(1.2, nodeWidthMm * 0.05);
+          const avatarSize = Math.max(4.4, Math.min(10.8, nodeHeightMm * 0.42));
+          const avatarX = x + (nodeWidthMm - avatarSize) / 2;
+          const avatarY = y + Math.max(1.2, nodeHeightMm * 0.08);
+          const photoSource = node.employee.photo?.trim() ?? "";
+          const photoDataUrl = photoSource ? photoCache.get(photoSource) ?? null : null;
+          if (photoDataUrl) {
+            const format = photoDataUrl.includes("image/png") ? "PNG" : "JPEG";
+            pdf.addImage(photoDataUrl, format as "PNG" | "JPEG", avatarX, avatarY, avatarSize, avatarSize, undefined, "FAST");
+          } else {
+            pdf.setFillColor(233, 242, 248);
+            pdf.setDrawColor(132, 157, 176);
+            pdf.circle(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, "FD");
+            pdf.setTextColor(66, 94, 116);
+            pdf.setFont("helvetica", "bold");
+            pdf.setFontSize(Math.max(3.4, Math.min(6.6, avatarSize * 0.65)));
+            pdf.text(initialsFromName(node.employee.name), avatarX + avatarSize / 2, avatarY + avatarSize / 2 + 0.1, {
+              align: "center",
+              baseline: "middle"
+            });
+          }
+
+          const contentTop = avatarY + avatarSize + Math.max(1.2, nodeHeightMm * 0.08);
+          const contentBottom = y + nodeHeightMm - Math.max(1.2, nodeHeightMm * 0.08);
+          const nameLineHeight = Math.max(1.4, nameFontSize * 0.42);
+          const titleLineHeight = Math.max(1.2, titleFontSize * 0.42);
+          const maxTextWidth = Math.max(8, nodeWidthMm - textMarginX * 2);
+
+          let nameLines = pdf.splitTextToSize(node.employee.name, maxTextWidth).slice(0, 3);
+          let titleLines = pdf.splitTextToSize(node.employee.title, maxTextWidth).slice(0, 2);
+          const blockGap = Math.max(0.9, nodeHeightMm * 0.045);
+          let nameBlockHeight = nameLines.length * nameLineHeight;
+          let titleBlockHeight = titleLines.length * titleLineHeight;
+          let totalTextHeight = nameBlockHeight + blockGap + titleBlockHeight;
+          const availableTextHeight = Math.max(0, contentBottom - contentTop);
+
+          if (totalTextHeight > availableTextHeight) {
+            nameLines = nameLines.slice(0, 2);
+            titleLines = titleLines.slice(0, 1);
+            nameBlockHeight = nameLines.length * nameLineHeight;
+            titleBlockHeight = titleLines.length * titleLineHeight;
+            totalTextHeight = nameBlockHeight + blockGap + titleBlockHeight;
+          }
+
+          const textStartY = contentTop + Math.max(0, (availableTextHeight - totalTextHeight) / 2);
+          pdf.setTextColor(16, 45, 66);
+          pdf.setFont("helvetica", "bold");
+          pdf.setFontSize(nameFontSize);
+          pdf.text(nameLines, x + nodeWidthMm / 2, textStartY, { align: "center", baseline: "top" });
+
+          pdf.setTextColor(58, 87, 109);
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(titleFontSize);
+          const titleStartY = textStartY + nameBlockHeight + blockGap;
+          pdf.text(titleLines, x + nodeWidthMm / 2, titleStartY, { align: "center", baseline: "top" });
+        });
+
+        if (pageCount > 1) {
+          pdf.setTextColor(90, 104, 118);
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(8);
+          pdf.text(`Page ${pageIndex + 1} of ${pageCount}`, pageWidth - margin, pageHeight - 3.5, { align: "right" });
+        }
+      };
+
+      // Always keep PDF export to one landscape page.
+      const offsetX = margin + Math.max(0, (usableWidth - contentWidth * stretchedXScale) / 2);
+      const offsetY = margin + Math.max(0, (usableHeight - contentHeight * exportScale) / 2);
+      drawPage(minX, minY, stretchedXScale, exportScale, offsetX, offsetY, false, 0, 1);
+
       pdf.save(`madison88-org-view-${new Date().toISOString().slice(0, 10)}.pdf`);
     } catch (error) {
       console.error("Failed to export PDF", error);
       showInfoModal("PDF export failed. Please try again.", "Export");
     }
-  }, [captureFullChartImage, showInfoModal]);
+  }, [chartEmployees, showInfoModal]);
 
   const printChart = useCallback(() => {
     window.print();
@@ -1587,7 +1831,7 @@ export default function App() {
           </div>
 
           <div
-            className={`chart-surface ${isExporting ? "is-exporting" : ""}`}
+            className="chart-surface"
             ref={wrapperRef}
             onMouseLeave={() => {
               setHoveredEmployeeId(null);
@@ -1654,21 +1898,21 @@ export default function App() {
                   style={{
                     transform: `translate(${translate.x}px, ${translate.y}px) scale(${zoom})`,
                     transformOrigin: "0 0",
-                    transition: isDragging || isExporting ? "none" : "transform 0.5s cubic-bezier(0.16, 1, 0.3, 1)"
+                    transition: isDragging ? "none" : "transform 0.5s cubic-bezier(0.16, 1, 0.3, 1)"
                   }}
                 >
                   <OrgChartManual
                     employees={chartEmployees}
-                    isDepartmentLaneView={isExporting ? true : isDepartmentLaneView}
-                    exportMode={isExporting}
-                    isCompactLayout={isExporting ? false : isCompactLayout}
+                    isDepartmentLaneView={isDepartmentLaneView}
+                    exportMode={false}
+                    isCompactLayout={isCompactLayout}
                     showDepartmentHeatmap={showDepartmentHeatmap}
                     selectedEmployeeId={selectedEmployeeId}
                     hoveredEmployeeId={hoveredEmployeeId}
                     onSelect={setSelectedEmployeeId}
                     onHover={setHoveredEmployeeId}
                     onHoverMove={setHoverPosition}
-                    zoomScale={isExporting ? Math.max(zoom, 0.95) : zoom}
+                    zoomScale={zoom}
                     matchingIds={chartMatchingIds}
                     onDimensionsChange={setChartDims}
                   />

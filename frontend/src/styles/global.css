@@ -2966,6 +2966,26 @@ body {
   .chart-surface {
     border: 0 !important;
     background: #ffffff !important;
+    overflow: visible !important;
+    position: static !important;
+  }
+
+  .chart-pan-layer {
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  .org-link {
+    stroke: rgba(28, 57, 78, 0.95) !important;
+    stroke-width: 3.1px !important;
+    opacity: 1 !important;
+  }
+
+  .node-shell .employee-card {
+    border: 1.2px solid rgba(58, 92, 115, 0.88) !important;
+    border-radius: 0.5rem !important;
+    background: #ffffff !important;
+    box-shadow: none !important;
   }
 
   .chart-surface::before {
@@ -3172,13 +3192,13 @@ body {
 }
 
 .chart-surface.is-exporting .org-link {
-  stroke: rgba(51, 81, 102, 0.72) !important;
-  stroke-width: 2.2 !important;
+  stroke: rgba(38, 70, 92, 0.9) !important;
+  stroke-width: 2.8 !important;
 }
 
 .org-export-root.export-mode .org-link {
-  stroke: rgba(51, 81, 102, 0.72) !important;
-  stroke-width: 2.2 !important;
+  stroke: rgba(38, 70, 92, 0.9) !important;
+  stroke-width: 2.8 !important;
 }
 
 .chart-surface.is-exporting .node-shell .employee-card {
