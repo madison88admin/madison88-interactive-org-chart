@@ -27,6 +27,7 @@ export interface Employee {
   startDate: string;
   status: EmployeeStatus;
   managerId: string | null;
+  additionalManagerIds?: string[];
   photo: string;
 }
 

@@ -67,19 +67,17 @@ export function buildHierarchicalTree(employees: Employee[]): BuildTreeResult {
     });
 
     let root: LayoutNode | null = null;
+    const rootCandidates: LayoutNode[] = [];
     const orphans = new Set<Employee>();
 
     // Assign children to parents
     employees.forEach(emp => {
         const node = map.get(emp.id)!;
 
-        // Try to identify a root (no manager or manager not in current list)
+        // Root candidates are employees with no manager in the current filtered set.
         if (!emp.managerId || !map.has(emp.managerId)) {
-            if (!root || (getRoleLevel(emp.title) === "CEO" && getRoleLevel(root.employee.title) !== "CEO")) {
-                // If we found a CEO, prefer it as root. Otherwise first one wins.
-                root = node;
-            } else {
-                orphans.add(emp);
+            if (!rootCandidates.find(candidate => candidate.id === node.id)) {
+                rootCandidates.push(node);
             }
         } else {
             const parent = map.get(emp.managerId);
@@ -92,6 +90,22 @@ export function buildHierarchicalTree(employees: Employee[]): BuildTreeResult {
             }
         }
     });
+
+    if (rootCandidates.length > 0) {
+        root =
+            rootCandidates.find(candidate => getRoleLevel(candidate.employee.title) === "CEO")
+            ?? rootCandidates[0];
+
+        // Keep additional root-level managers visible instead of treating them as orphans.
+        rootCandidates.forEach(candidate => {
+            if (!root || candidate.id === root.id) {
+                return;
+            }
+            if (!root.children.find(child => child.id === candidate.id)) {
+                root.children.push(candidate);
+            }
+        });
+    }
 
     // Cycle detection / unreachable nodes identification
     const visited = new Set<string>();
@@ -112,7 +126,7 @@ export function buildHierarchicalTree(employees: Employee[]): BuildTreeResult {
         }
     });
 
-    // If still no root but we have employees, pick the first one as a fallback root
+    // If still no root but we have employees, pick the first one as a fallback root.
     if (!root && employees.length > 0) {
         root = map.get(employees[0].id) || null;
     }

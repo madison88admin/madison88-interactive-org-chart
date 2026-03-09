@@ -56,6 +56,7 @@ const EMPLOYEES_DATA_SIGNATURE = hashString(
         employee.startDate,
         employee.status,
         employee.managerId ?? "",
+        JSON.stringify(employee.additionalManagerIds ?? []),
         employee.photo,
         JSON.stringify(employee.regionalRoles ?? [])
       ].join("|")
@@ -139,6 +140,19 @@ const normalizeRegionalRoles = (roles: Employee["regionalRoles"], baseLocation: 
     return acc;
   }, []);
   return normalized.length > 0 ? normalized : undefined;
+};
+const normalizeAdditionalManagerIds = (
+  candidateIds: string[] | undefined,
+  employeeId: string,
+  primaryManagerId: string | null,
+  employees: Employee[]
+) => {
+  const allowed = new Set(employees.map((employee) => employee.id));
+  const normalized = Array.from(new Set((candidateIds ?? []).map((id) => id.trim()).filter(Boolean)));
+  const filtered = normalized.filter(
+    (id) => id !== employeeId && id !== primaryManagerId && allowed.has(id)
+  );
+  return filtered.length > 0 ? filtered : undefined;
 };
 type ModalMode = "info" | "confirm";
 type ModalTone = "primary" | "danger";
@@ -783,20 +797,52 @@ export default function App() {
       };
 
       const exportLayoutConfig = {
-        nodeWidth: 172,
-        nodeHeight: 106,
+        nodeWidth: 194,
+        nodeHeight: 112,
         levelGap: 34,
-        siblingGap: 20
+        siblingGap: 24
       };
-      calculateDepartmentLaneLayout(syntheticRoot, exportLayoutConfig, 5, 2);
+      const flattenNodes = (rootNode: LayoutNode): LayoutNode[] => {
+        const list: LayoutNode[] = [];
+        const visit = (node: LayoutNode) => {
+          list.push(node);
+          node.children.forEach(visit);
+        };
+        visit(rootNode);
+        return list.filter((node) => node.id !== "__export_root__");
+      };
 
-      const nodes: LayoutNode[] = [];
-      const flattenNodes = (node: LayoutNode) => {
-        nodes.push(node);
-        node.children.forEach(flattenNodes);
+      const measureBounds = (nodes: LayoutNode[]) => {
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+
+        nodes.forEach((node) => {
+          minX = Math.min(minX, node.x);
+          minY = Math.min(minY, node.y);
+          maxX = Math.max(maxX, node.x + exportLayoutConfig.nodeWidth);
+          maxY = Math.max(maxY, node.y + exportLayoutConfig.nodeHeight);
+        });
+
+        const contentWidth = Math.max(1, maxX - minX);
+        const contentHeight = Math.max(1, maxY - minY);
+        return { minX, minY, maxX, maxY, contentWidth, contentHeight };
       };
-      flattenNodes(syntheticRoot);
-      const exportNodes = nodes.filter((node) => node.id !== "__export_root__");
+
+      // Branch out downward across all levels by wrapping each level into compact rows.
+      const exportColumnLimit = printableEmployees.length <= 28 ? 4 : printableEmployees.length <= 70 ? 5 : 6;
+      calculateDepartmentLaneLayout(syntheticRoot, exportLayoutConfig, exportColumnLimit, 99);
+      let exportNodes = flattenNodes(syntheticRoot);
+      let bounds = measureBounds(exportNodes);
+
+      // If still too wide, reflow with fewer columns to push more vertical branching.
+      const initialAspectRatio = bounds.contentWidth / Math.max(bounds.contentHeight, 1);
+      if (initialAspectRatio > 2.1 && exportColumnLimit > 4) {
+        calculateDepartmentLaneLayout(syntheticRoot, exportLayoutConfig, exportColumnLimit - 2, 99);
+        exportNodes = flattenNodes(syntheticRoot);
+        bounds = measureBounds(exportNodes);
+      }
 
       const depthByNodeId = new Map<string, number>();
       const assignDepth = (node: LayoutNode, depth: number) => {
@@ -808,27 +854,14 @@ export default function App() {
       syntheticRoot.children.forEach((child) => assignDepth(child, 1));
       const maxHierarchyDepth = Math.max(...Array.from(depthByNodeId.values()), 1);
 
-      let minX = Infinity;
-      let minY = Infinity;
-      let maxX = -Infinity;
-      let maxY = -Infinity;
-      exportNodes.forEach((node) => {
-        minX = Math.min(minX, node.x);
-        minY = Math.min(minY, node.y);
-        maxX = Math.max(maxX, node.x + exportLayoutConfig.nodeWidth);
-        maxY = Math.max(maxY, node.y + exportLayoutConfig.nodeHeight);
-      });
-
-      const contentWidth = Math.max(1, maxX - minX);
-      const contentHeight = Math.max(1, maxY - minY);
+      const { minX, minY, contentWidth, contentHeight } = bounds;
       const orientation: "portrait" | "landscape" = "landscape";
-      const contentAspectRatio = contentWidth / Math.max(contentHeight, 1);
       const smallHierarchy = exportNodes.length <= 24;
-      const denseHierarchy = exportNodes.length > 70 || contentAspectRatio < 0.5;
+      const denseHierarchy = exportNodes.length > 58;
       const pdf = new jsPDF({
         orientation,
         unit: "mm",
-        format: denseHierarchy ? "a1" : smallHierarchy ? "a3" : "a2",
+        format: denseHierarchy ? "a1" : "a2",
         compress: true
       });
 
@@ -840,17 +873,14 @@ export default function App() {
       const widthScale = usableWidth / Math.max(contentWidth, 1);
       const heightScale = usableHeight / Math.max(contentHeight, 1);
       const fitScale = Math.min(widthScale, heightScale);
-      const upscaleCap = smallHierarchy ? 0.68 : exportNodes.length <= 44 ? 0.9 : 1.08;
+      const contentAspectRatio = contentWidth / Math.max(contentHeight, 1);
+      const upscaleCap = smallHierarchy ? 0.84 : exportNodes.length <= 44 ? 1.02 : 1.08;
       const exportScale = Math.min(fitScale, upscaleCap);
-      const pageAspectRatio = usableWidth / Math.max(usableHeight, 1);
-
-      // Wide-stretch very tall org trees so landscape pages are actually used.
+      // Use more horizontal canvas for narrow/tall outputs to improve readability.
       const horizontalStretchMultiplier =
-        smallHierarchy
-          ? 1
-          : contentAspectRatio < 0.52
-          ? Math.min(1.95, Math.max(1.2, pageAspectRatio / Math.max(contentAspectRatio, 0.1) * 0.62))
-          : 1.12;
+        contentAspectRatio < 0.68
+          ? Math.min(1.55, Math.max(1.18, widthScale / Math.max(exportScale, 0.01)))
+          : 1.08;
       const stretchedXScale = Math.min(widthScale, exportScale * horizontalStretchMultiplier);
 
       const initialsFromName = (name: string): string => {
@@ -927,8 +957,8 @@ export default function App() {
         const nodeWidthMm = exportLayoutConfig.nodeWidth * xScale;
         const nodeHeightMm = exportLayoutConfig.nodeHeight * yScale;
         const nodeCorner = Math.max(0.8, Math.min(2.2, nodeHeightMm * 0.12));
-        const nameFontSize = Math.max(6.0, Math.min(9.2, nodeHeightMm * 0.2));
-        const titleFontSize = Math.max(5.2, Math.min(7.2, nodeHeightMm * 0.16));
+        const nameFontSize = Math.max(7.4, Math.min(10.4, nodeHeightMm * 0.23));
+        const titleFontSize = Math.max(6.2, Math.min(8.2, nodeHeightMm * 0.18));
 
         pdf.setFillColor(255, 255, 255);
         pdf.rect(0, 0, pageWidth, pageHeight, "F");
@@ -1363,6 +1393,12 @@ export default function App() {
         (employees.reduce((max, employee) => Math.max(max, Number.parseInt(employee.id, 10) || 0), 0) + 1)
           .toString()
           .padStart(3, "0");
+      const additionalManagerIds = normalizeAdditionalManagerIds(
+        input.additionalManagerIds,
+        nextId,
+        input.managerId,
+        employees
+      );
 
       const newEmployee: Employee = {
         id: nextId,
@@ -1374,6 +1410,7 @@ export default function App() {
         startDate: startDate || new Date().toISOString().slice(0, 10),
         status,
         managerId: input.managerId,
+        ...(additionalManagerIds ? { additionalManagerIds } : {}),
         regionalRoles: normalizedRegionalRoles,
         photo: normalizedPhoto || generatedAvatarPhoto(name)
       };
@@ -1410,6 +1447,12 @@ export default function App() {
       showInfoModal("An employee cannot be their own manager.", "Validation");
       return;
     }
+    const additionalManagerIds = normalizeAdditionalManagerIds(
+      input.additionalManagerIds,
+      input.id,
+      input.managerId,
+      employees
+    );
 
     if (normalizedEmail && employees.some((employee) => employee.id !== input.id && employee.email.trim().toLowerCase() === normalizedEmail)) {
       showInfoModal("Email already exists. Please use a unique email address.", "Validation");
@@ -1429,6 +1472,7 @@ export default function App() {
             startDate: startDate || employee.startDate || new Date().toISOString().slice(0, 10),
             status: input.status,
             managerId: input.managerId,
+            ...(additionalManagerIds ? { additionalManagerIds } : { additionalManagerIds: undefined }),
             regionalRoles: normalizedRegionalRoles,
             photo:
               input.photo !== undefined
@@ -1439,6 +1483,58 @@ export default function App() {
       )
     );
   }, [commitEmployeesChange, employees, isReadOnlyView, showInfoModal]);
+
+  const assignReportsToManager = useCallback(
+    (managerId: string, reportIds: string[]) => {
+      if (isReadOnlyView) {
+        return;
+      }
+      const manager = employees.find((employee) => employee.id === managerId);
+      if (!manager) {
+        showInfoModal("Selected manager was not found.", "Validation");
+        return;
+      }
+
+      const uniqueReportIds = Array.from(new Set(reportIds.filter((id) => id && id !== managerId)));
+      if (uniqueReportIds.length === 0) {
+        return;
+      }
+
+      const byId = new Map(employees.map((employee) => [employee.id, employee]));
+      const ancestorIds = new Set<string>();
+      let currentAncestorId = manager.managerId;
+      while (currentAncestorId) {
+        ancestorIds.add(currentAncestorId);
+        currentAncestorId = byId.get(currentAncestorId)?.managerId ?? null;
+      }
+
+      const invalidAssignments = uniqueReportIds.filter((id) => ancestorIds.has(id));
+      if (invalidAssignments.length > 0) {
+        const invalidNames = invalidAssignments
+          .map((id) => byId.get(id)?.name ?? id)
+          .join(", ");
+        showInfoModal(
+          `Cannot assign manager ancestors as direct reports (${invalidNames}).`,
+          "Validation"
+        );
+        return;
+      }
+
+      const reportIdSet = new Set(uniqueReportIds);
+      commitEmployeesChange(
+        employees.map((employee) =>
+          reportIdSet.has(employee.id)
+            ? {
+                ...employee,
+                managerId,
+                additionalManagerIds: employee.additionalManagerIds?.filter((id) => id !== managerId)
+              }
+            : employee
+        )
+      );
+    },
+    [commitEmployeesChange, employees, isReadOnlyView, showInfoModal]
+  );
 
   const deleteEmployee = useCallback(
     (employeeId: string) => {
@@ -1478,9 +1574,15 @@ export default function App() {
                 employee.managerId === employeeId
                   ? {
                     ...employee,
-                    managerId: nextManagerId
+                    managerId: nextManagerId,
+                    additionalManagerIds: employee.additionalManagerIds?.filter(
+                      (id) => id !== employeeId && id !== nextManagerId
+                    )
                   }
-                  : employee
+                  : {
+                    ...employee,
+                    additionalManagerIds: employee.additionalManagerIds?.filter((id) => id !== employeeId)
+                  }
               );
           });
 
@@ -1997,6 +2099,7 @@ export default function App() {
           onFocus={focusEmployeeInChart}
           onAddEmployee={addEmployee}
           onUpdateEmployee={updateEmployee}
+          onAssignReports={assignReportsToManager}
           onDeleteEmployee={deleteEmployee}
           onUploadPhoto={uploadPhotoToSupabase}
           onNotify={showInfoModal}

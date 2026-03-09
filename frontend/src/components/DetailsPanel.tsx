@@ -11,6 +11,7 @@ export interface NewEmployeeInput {
   startDate: string;
   status: Employee["status"];
   managerId: string | null;
+  additionalManagerIds?: string[];
   regionalRoles?: RegionalRole[];
   photo?: string;
 }
@@ -25,6 +26,7 @@ export interface UpdateEmployeeInput {
   startDate: string;
   status: Employee["status"];
   managerId: string | null;
+  additionalManagerIds?: string[];
   regionalRoles?: RegionalRole[];
   photo?: string;
 }
@@ -35,6 +37,7 @@ interface DetailsPanelProps {
   onFocus: (id: string) => void;
   onAddEmployee: (input: NewEmployeeInput) => void;
   onUpdateEmployee: (input: UpdateEmployeeInput) => void;
+  onAssignReports: (managerId: string, reportIds: string[]) => void;
   onDeleteEmployee: (id: string) => void;
   onUploadPhoto?: (file: File, employeeId?: string) => Promise<string>;
   onNotify: (message: string, title?: string) => void;
@@ -58,7 +61,7 @@ const STATUS_FORM_OPTIONS: Array<{ value: Employee["status"]; label: string }> =
 ];
 const MAX_PHOTO_FILE_SIZE = 2 * 1024 * 1024;
 const STANDARD_PHOTO_SIZE = 320;
-const MANAGER_PLACEHOLDER_VALUES = new Set(["__selected__", "__current__", "__none__"]);
+const MANAGER_PLACEHOLDER_VALUES = new Set(["__selected__", "__current__", "__none__", "__peer__"]);
 type RegionalRoleDraft = { location: string; title: string; department: string };
 
 const managerMatchesSearch = (employee: Employee, query: string) => {
@@ -86,6 +89,32 @@ const filterManagersWithSelection = (options: Employee[], query: string, selecte
     return filtered;
   }
   return [selectedEmployee, ...filtered];
+};
+
+const groupManagersByDepartment = (options: Employee[], department: string) => {
+  const normalizedDepartment = department.trim().toLowerCase();
+  if (!normalizedDepartment) {
+    return { sameDepartment: [] as Employee[], otherDepartments: options };
+  }
+  const sameDepartment: Employee[] = [];
+  const otherDepartments: Employee[] = [];
+  options.forEach((employee) => {
+    if (employee.department.trim().toLowerCase() === normalizedDepartment) {
+      sameDepartment.push(employee);
+      return;
+    }
+    otherDepartments.push(employee);
+  });
+  return { sameDepartment, otherDepartments };
+};
+
+const normalizeAdditionalManagers = (
+  value: string[],
+  employeeId: string,
+  primaryManagerId: string | null
+) => {
+  const unique = Array.from(new Set(value.filter(Boolean)));
+  return unique.filter((id) => id !== employeeId && id !== primaryManagerId);
 };
 
 const normalizeLocationKey = (value: string) => value.trim().toLowerCase();
@@ -194,6 +223,7 @@ export function DetailsPanel({
   onFocus,
   onAddEmployee,
   onUpdateEmployee,
+  onAssignReports,
   onDeleteEmployee,
   onUploadPhoto,
   onNotify,
@@ -211,6 +241,9 @@ export function DetailsPanel({
   const [formStatus, setFormStatus] = useState<Employee["status"]>("standard");
   const [formManagerId, setFormManagerId] = useState<string>("__selected__");
   const [formManagerSearch, setFormManagerSearch] = useState("");
+  const [formAdditionalManagerIds, setFormAdditionalManagerIds] = useState<string[]>([]);
+  const [assignReportsSearch, setAssignReportsSearch] = useState("");
+  const [assignReportIds, setAssignReportIds] = useState<string[]>([]);
   const [formRegionalRoles, setFormRegionalRoles] = useState<RegionalRoleDraft[]>([]);
   const [formPhoto, setFormPhoto] = useState("");
   const [isFormPhotoUploading, setIsFormPhotoUploading] = useState(false);
@@ -223,6 +256,7 @@ export function DetailsPanel({
   const [editStatus, setEditStatus] = useState<Employee["status"]>("standard");
   const [editManagerId, setEditManagerId] = useState<string>("__current__");
   const [editManagerSearch, setEditManagerSearch] = useState("");
+  const [editAdditionalManagerIds, setEditAdditionalManagerIds] = useState<string[]>([]);
   const [editRegionalRoles, setEditRegionalRoles] = useState<RegionalRoleDraft[]>([]);
   const [editPhoto, setEditPhoto] = useState("");
   const [isEditPhotoUploading, setIsEditPhotoUploading] = useState(false);
@@ -256,6 +290,39 @@ export function DetailsPanel({
     () => filterManagersWithSelection(managerOptions, editManagerSearch, editManagerId),
     [editManagerId, editManagerSearch, managerOptions]
   );
+  const addManagerDepartment = formDepartment.trim() || selectedEmployee?.department.trim() || "";
+  const editManagerDepartment = editDepartment.trim() || selectedEmployee?.department.trim() || "";
+  const groupedAddManagerOptions = useMemo(
+    () => groupManagersByDepartment(filteredAddManagerOptions, addManagerDepartment),
+    [addManagerDepartment, filteredAddManagerOptions]
+  );
+  const groupedEditManagerOptions = useMemo(
+    () => groupManagersByDepartment(filteredEditManagerOptions, editManagerDepartment),
+    [editManagerDepartment, filteredEditManagerOptions]
+  );
+  const additionalManagerOptions = useMemo(
+    () => managerOptions,
+    [managerOptions]
+  );
+  const assignableReports = useMemo(() => {
+    if (!selectedEmployee) {
+      return [];
+    }
+    const query = assignReportsSearch.trim().toLowerCase();
+    return employees
+      .filter((employee) => employee.id !== selectedEmployee.id && employee.managerId !== selectedEmployee.id)
+      .filter((employee) => {
+        if (!query) {
+          return true;
+        }
+        return (
+          employee.name.toLowerCase().includes(query) ||
+          employee.title.toLowerCase().includes(query) ||
+          employee.department.toLowerCase().includes(query)
+        );
+      })
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }, [assignReportsSearch, employees, selectedEmployee]);
 
   useEffect(() => {
     if (isMutatingDisabled) {
@@ -263,6 +330,10 @@ export function DetailsPanel({
       setShowEditForm(false);
     }
   }, [isMutatingDisabled]);
+  useEffect(() => {
+    setAssignReportsSearch("");
+    setAssignReportIds([]);
+  }, [selectedEmployee?.id]);
 
   const handlePhotoSelection = async (
     file: File | null,
@@ -315,6 +386,10 @@ export function DetailsPanel({
 
   const persistedSelectedEmployee = employees.find((employee) => employee.id === selectedEmployee.id) ?? selectedEmployee;
   const manager = managerFor(employees, selectedEmployee.id);
+  const additionalManagers = (selectedEmployee.additionalManagerIds ?? [])
+    .map((id) => employees.find((employee) => employee.id === id))
+    .filter((employee): employee is Employee => Boolean(employee))
+    .sort((left, right) => left.name.localeCompare(right.name));
   const reports = directReportIds(employees, selectedEmployee.id)
     .map((id) => employees.find((employee) => employee.id === id))
     .filter((employee): employee is Employee => Boolean(employee))
@@ -385,6 +460,16 @@ export function DetailsPanel({
         ) : (
           <p>Top of hierarchy</p>
         )}
+        {additionalManagers.length > 0 && (
+          <div className="reports-list">
+            <p className="form-note">Additional managers</p>
+            {additionalManagers.map((employee) => (
+              <button key={`additional-manager-${employee.id}`} type="button" className="link-btn" onClick={() => onFocus(employee.id)}>
+                {employee.name}
+              </button>
+            ))}
+          </div>
+        )}
       </section>
 
       <section>
@@ -419,6 +504,7 @@ export function DetailsPanel({
               setFormStatus("standard");
               setFormManagerId("__selected__");
               setFormManagerSearch("");
+              setFormAdditionalManagerIds([]);
               setFormRegionalRoles([]);
               setFormPhoto("");
               setShowAddForm(true);
@@ -431,7 +517,19 @@ export function DetailsPanel({
             className="add-employee-form form-template"
             onSubmit={(event) => {
               event.preventDefault();
-              const managerId = formManagerId === "__selected__" ? selectedEmployee.id : formManagerId === "__none__" ? null : formManagerId;
+              const managerId =
+                formManagerId === "__selected__"
+                  ? selectedEmployee.id
+                  : formManagerId === "__peer__"
+                    ? selectedEmployee.managerId ?? null
+                    : formManagerId === "__none__"
+                      ? null
+                      : formManagerId;
+              const additionalManagerIds = normalizeAdditionalManagers(
+                formAdditionalManagerIds,
+                selectedEmployee.id,
+                managerId
+              );
               const regionalRoles = sanitizeRegionalRoles(formRegionalRoles, formLocation, onNotify);
               if (regionalRoles === null) {
                 return;
@@ -445,6 +543,7 @@ export function DetailsPanel({
                 startDate: formStartDate,
                 status: formStatus,
                 managerId,
+                additionalManagerIds,
                 regionalRoles,
                 photo: formPhoto.trim()
               });
@@ -457,6 +556,7 @@ export function DetailsPanel({
               setFormStatus("standard");
               setFormManagerId("__selected__");
               setFormManagerSearch("");
+              setFormAdditionalManagerIds([]);
               setFormRegionalRoles([]);
               setFormPhoto("");
               setShowAddForm(false);
@@ -631,16 +731,47 @@ export function DetailsPanel({
               <span>Manager</span>
               <select value={formManagerId} onChange={(event) => setFormManagerId(event.target.value)}>
                 <option value="__selected__">Manager: {selectedEmployee.name}</option>
+                <option value="__peer__">Same level as {selectedEmployee.name}</option>
                 <option value="__none__">No manager (top-level)</option>
-                {filteredAddManagerOptions.map((employee) => (
-                  <option key={employee.id} value={employee.id}>
-                    {employee.name}
-                  </option>
-                ))}
+                {groupedAddManagerOptions.sameDepartment.length > 0 && (
+                  <optgroup label={`Same department (${addManagerDepartment})`}>
+                    {groupedAddManagerOptions.sameDepartment.map((employee) => (
+                      <option key={employee.id} value={employee.id}>
+                        {employee.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {groupedAddManagerOptions.otherDepartments.length > 0 && (
+                  <optgroup label="Other departments">
+                    {groupedAddManagerOptions.otherDepartments.map((employee) => (
+                      <option key={employee.id} value={employee.id}>
+                        {employee.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
               {formManagerSearch.trim() && filteredAddManagerOptions.length === 0 && (
                 <small className="form-note">No matching managers found.</small>
               )}
+            </label>
+            <label className="form-field">
+              <span>Additional Managers (optional)</span>
+              <select
+                multiple
+                value={formAdditionalManagerIds}
+                onChange={(event) =>
+                  setFormAdditionalManagerIds(Array.from(event.target.selectedOptions).map((option) => option.value))
+                }
+              >
+                {additionalManagerOptions.map((employee) => (
+                  <option key={`add-secondary-${employee.id}`} value={employee.id}>
+                    {employee.name} - {employee.title}
+                  </option>
+                ))}
+              </select>
+              <small className="form-note">Hold Ctrl/Cmd to select multiple managers.</small>
             </label>
             <div className="add-form-actions">
               <button type="submit" className="link-btn">
@@ -660,6 +791,7 @@ export function DetailsPanel({
                   setFormStatus("standard");
                   setFormManagerId("__selected__");
                   setFormManagerSearch("");
+                  setFormAdditionalManagerIds([]);
                   setFormRegionalRoles([]);
                   setFormPhoto("");
                 }}
@@ -691,6 +823,7 @@ export function DetailsPanel({
               setEditStatus(persistedSelectedEmployee.status);
               setEditManagerId(persistedSelectedEmployee.managerId ?? "__none__");
               setEditManagerSearch("");
+              setEditAdditionalManagerIds([...(persistedSelectedEmployee.additionalManagerIds ?? [])]);
               setEditRegionalRoles(
                 (persistedSelectedEmployee.regionalRoles ?? []).map((entry) => ({
                   location: entry.location,
@@ -715,6 +848,11 @@ export function DetailsPanel({
               }
               const managerId =
                 editManagerId === "__none__" ? null : editManagerId === "__current__" ? persistedSelectedEmployee.managerId : editManagerId;
+              const additionalManagerIds = normalizeAdditionalManagers(
+                editAdditionalManagerIds,
+                persistedSelectedEmployee.id,
+                managerId
+              );
               onUpdateEmployee({
                 id: persistedSelectedEmployee.id,
                 name: editName.trim(),
@@ -725,10 +863,12 @@ export function DetailsPanel({
                 startDate: editStartDate,
                 status: editStatus,
                 managerId,
+                additionalManagerIds,
                 regionalRoles,
                 photo: editPhoto.trim()
               });
               setEditManagerSearch("");
+              setEditAdditionalManagerIds([]);
               setEditRegionalRoles([]);
               setShowEditForm(false);
             }}
@@ -908,15 +1048,45 @@ export function DetailsPanel({
               <select value={editManagerId} onChange={(event) => setEditManagerId(event.target.value)}>
                 <option value="__current__">Keep current manager</option>
                 <option value="__none__">No manager (top-level)</option>
-                {filteredEditManagerOptions.map((employee) => (
-                  <option key={employee.id} value={employee.id}>
-                    {employee.name}
-                  </option>
-                ))}
+                {groupedEditManagerOptions.sameDepartment.length > 0 && (
+                  <optgroup label={`Same department (${editManagerDepartment})`}>
+                    {groupedEditManagerOptions.sameDepartment.map((employee) => (
+                      <option key={employee.id} value={employee.id}>
+                        {employee.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {groupedEditManagerOptions.otherDepartments.length > 0 && (
+                  <optgroup label="Other departments">
+                    {groupedEditManagerOptions.otherDepartments.map((employee) => (
+                      <option key={employee.id} value={employee.id}>
+                        {employee.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
               {editManagerSearch.trim() && filteredEditManagerOptions.length === 0 && (
                 <small className="form-note">No matching managers found.</small>
               )}
+            </label>
+            <label className="form-field">
+              <span>Additional Managers (optional)</span>
+              <select
+                multiple
+                value={editAdditionalManagerIds}
+                onChange={(event) =>
+                  setEditAdditionalManagerIds(Array.from(event.target.selectedOptions).map((option) => option.value))
+                }
+              >
+                {additionalManagerOptions.map((employee) => (
+                  <option key={`edit-secondary-${employee.id}`} value={employee.id}>
+                    {employee.name} - {employee.title}
+                  </option>
+                ))}
+              </select>
+              <small className="form-note">Hold Ctrl/Cmd to select multiple managers.</small>
             </label>
             <div className="add-form-actions">
               <button type="submit" className="link-btn">
@@ -927,6 +1097,7 @@ export function DetailsPanel({
                 className="link-btn"
                 onClick={() => {
                   setEditManagerSearch("");
+                  setEditAdditionalManagerIds([]);
                   setEditRegionalRoles([]);
                   setShowEditForm(false);
                 }}
@@ -937,6 +1108,64 @@ export function DetailsPanel({
           </form>
         )}
         {isMutatingDisabled && <p className="form-note">Select the employee first before editing details.</p>}
+        </section>
+      )}
+
+      {!readonlyMode && (
+        <section className="assign-reports-section">
+          <h4>Assign Multiple Direct Reports</h4>
+          <p className="form-note">Select employees and assign them under {selectedEmployee.name}.</p>
+          <label className="form-field assign-reports-search">
+            <span>Search Employees</span>
+            <input
+              type="search"
+              value={assignReportsSearch}
+              onChange={(event) => setAssignReportsSearch(event.target.value)}
+              placeholder="Search name, title, department"
+            />
+          </label>
+          <div className="reports-list assign-reports-list">
+            {assignableReports.length === 0 && <p className="form-note">No available employees to assign.</p>}
+            {assignableReports.map((employee) => {
+              const checked = assignReportIds.includes(employee.id);
+              return (
+                <label key={`assign-${employee.id}`} className="assign-report-item">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(event) => {
+                      const isChecked = event.target.checked;
+                      setAssignReportIds((current) =>
+                        isChecked ? [...current, employee.id] : current.filter((id) => id !== employee.id)
+                      );
+                    }}
+                  />
+                  <span>{employee.name} - {employee.title}</span>
+                </label>
+              );
+            })}
+          </div>
+          <div className="add-form-actions assign-reports-actions">
+            <button
+              type="button"
+              className="link-btn assign-action-btn"
+              disabled={assignReportIds.length === 0}
+              onClick={() => {
+                onAssignReports(selectedEmployee.id, assignReportIds);
+                setAssignReportIds([]);
+              }}
+            >
+              Assign Selected ({assignReportIds.length})
+            </button>
+            <button
+              type="button"
+              className="link-btn assign-action-btn"
+              onClick={() => setAssignReportIds([])}
+              disabled={assignReportIds.length === 0}
+            >
+              Clear
+            </button>
+          </div>
         </section>
       )}
 
