@@ -64,21 +64,40 @@ export function EmployeeCard({
       onBlur={() => onHover?.(null)}
       aria-label={`View ${employee.name}`}
     >
-      <img
-        src={photoSrc}
-        alt={employee.name}
-        className="employee-photo"
-        loading="lazy"
-        onError={(event) => {
-          event.currentTarget.onerror = null;
-          event.currentTarget.src = fallbackPhoto;
-        }}
-      />
+      <div className="card-glass-shine" />
+      <div className="card-border-glow" />
+
+      <div className="employee-photo-wrapper">
+        <img
+          src={photoSrc}
+          alt={employee.name}
+          className="employee-photo"
+          loading="lazy"
+          onError={(event) => {
+            event.currentTarget.onerror = null;
+            event.currentTarget.src = fallbackPhoto;
+          }}
+        />
+        {employee.status !== "standard" && !isVeryLowZoom && (
+          <div className={`status-indicator status-${employee.status}`} />
+        )}
+      </div>
+
       <div className="employee-content">
-        <h3>{employee.name}</h3>
+        <div className="employee-name-row">
+          <h3>{employee.name}</h3>
+        </div>
         {!isVeryLowZoom && <p className="employee-title">{employee.title}</p>}
-        {!isLowZoom && <p className="employee-department">{employee.department}</p>}
-        {!compact && <span className="status-pill">{STATUS_LABEL[employee.status]}</span>}
+        {!isLowZoom && (
+          <div className="employee-meta-row">
+            <span className="employee-department">{employee.department}</span>
+          </div>
+        )}
+        {!compact && (
+          <div className="status-pill-wrapper">
+            <span className="status-pill">{STATUS_LABEL[employee.status]}</span>
+          </div>
+        )}
       </div>
     </button>
   );

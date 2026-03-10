@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toPng } from "html-to-image";
 import { jsPDF } from "jspdf";
 import employeesData from "./data/employees.json";
 import { DetailsPanel } from "./components/DetailsPanel";
@@ -15,6 +14,7 @@ import { uploadEmployeePhoto } from "./services/photoStorage";
 import { hasSupabaseConfig } from "./services/supabaseClient";
 import {
   calculateDepartmentLaneLayout,
+  calculateTreeLayout,
   type LayoutNode
 } from "./utils/layout";
 import { APP_BUILD_ID, avatarFallback } from "./utils/photo";
@@ -697,37 +697,6 @@ export default function App() {
     [translate, zoom]
   );
 
-  const downloadPng = useCallback(async () => {
-    const surface = wrapperRef.current;
-    if (!surface) {
-      showInfoModal("Unable to export right now. Please try again.", "Export");
-      return;
-    }
-    const exportWidth = Math.max(1, surface.clientWidth);
-    const exportHeight = Math.max(1, surface.clientHeight);
-
-    try {
-      const pngUrl = await toPng(surface, {
-        cacheBust: true,
-        pixelRatio: 2,
-        backgroundColor: "#071723",
-        width: exportWidth,
-        height: exportHeight,
-        style: {
-          overflow: "hidden"
-        },
-        imagePlaceholder: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
-      });
-
-      const link = document.createElement("a");
-      link.href = pngUrl;
-      link.download = `madison88-org-view-${new Date().toISOString().slice(0, 10)}.png`;
-      link.click();
-    } catch (error) {
-      console.error("Failed to export PNG", error);
-      showInfoModal("PNG export failed. Check image permissions and try again.", "Export");
-    }
-  }, [showInfoModal]);
 
   const uploadPhotoToSupabase = useCallback(
     async (file: File, employeeId?: string) => {
@@ -757,7 +726,8 @@ export default function App() {
           children: [],
           x: 0,
           y: 0,
-          subtreeWidth: 0
+          subtreeWidth: 0,
+          additionalManagerIds: employee.additionalManagerIds ?? []
         });
       });
 
@@ -793,14 +763,15 @@ export default function App() {
         children: forestRoots,
         x: 0,
         y: 0,
-        subtreeWidth: 0
+        subtreeWidth: 0,
+        additionalManagerIds: []
       };
 
       const exportLayoutConfig = {
         nodeWidth: 194,
         nodeHeight: 112,
-        levelGap: 34,
-        siblingGap: 24
+        levelGap: 72,
+        siblingGap: 36
       };
       const flattenNodes = (rootNode: LayoutNode): LayoutNode[] => {
         const list: LayoutNode[] = [];
@@ -830,19 +801,34 @@ export default function App() {
         return { minX, minY, maxX, maxY, contentWidth, contentHeight };
       };
 
-      // Branch out downward across all levels by wrapping each level into compact rows.
-      const exportColumnLimit = printableEmployees.length <= 28 ? 4 : printableEmployees.length <= 70 ? 5 : 6;
-      calculateDepartmentLaneLayout(syntheticRoot, exportLayoutConfig, exportColumnLimit, 99);
+      if (isDepartmentLaneView) {
+        // Branch out downward across all levels by wrapping each level into compact rows.
+        const exportColumnLimit = printableEmployees.length <= 28 ? 4 : printableEmployees.length <= 70 ? 5 : 6;
+        calculateDepartmentLaneLayout(syntheticRoot, exportLayoutConfig, exportColumnLimit, 99);
+        let tempNodes = flattenNodes(syntheticRoot);
+        let bounds = measureBounds(tempNodes);
+
+        // If still too wide, reflow with fewer columns to push more vertical branching.
+        const initialAspectRatio = bounds.contentWidth / Math.max(bounds.contentHeight, 1);
+        if (initialAspectRatio > 2.1 && exportColumnLimit > 4) {
+          calculateDepartmentLaneLayout(syntheticRoot, exportLayoutConfig, exportColumnLimit - 2, 99);
+        }
+      } else {
+        // Strict hierarchical tree layout
+        calculateTreeLayout(syntheticRoot, exportLayoutConfig);
+      }
+
       let exportNodes = flattenNodes(syntheticRoot);
       let bounds = measureBounds(exportNodes);
 
-      // If still too wide, reflow with fewer columns to push more vertical branching.
-      const initialAspectRatio = bounds.contentWidth / Math.max(bounds.contentHeight, 1);
-      if (initialAspectRatio > 2.1 && exportColumnLimit > 4) {
-        calculateDepartmentLaneLayout(syntheticRoot, exportLayoutConfig, exportColumnLimit - 2, 99);
-        exportNodes = flattenNodes(syntheticRoot);
-        bounds = measureBounds(exportNodes);
-      }
+      // Add extra padding to the bounds to ensure strokes/nodes don't clip at the edges,
+      // especially adding 300 vertical to prevent top/bottom clipping when scaled down.
+      bounds.minY -= 300;
+      bounds.maxY += 300;
+      bounds.minX -= 100;
+      bounds.maxX += 100;
+      bounds.contentWidth = Math.max(1, bounds.maxX - bounds.minX);
+      bounds.contentHeight = Math.max(1, bounds.maxY - bounds.minY);
 
       const depthByNodeId = new Map<string, number>();
       const assignDepth = (node: LayoutNode, depth: number) => {
@@ -855,33 +841,33 @@ export default function App() {
       const maxHierarchyDepth = Math.max(...Array.from(depthByNodeId.values()), 1);
 
       const { minX, minY, contentWidth, contentHeight } = bounds;
-      const orientation: "portrait" | "landscape" = "landscape";
-      const smallHierarchy = exportNodes.length <= 24;
-      const denseHierarchy = exportNodes.length > 58;
+
+      // Instead of forcing the massive chart into an A1/A2 page (which shrinks it wildly),
+      // we dynamically size the PDF canvas to exactly match the content's size.
+      const mmPerPixel = 0.22;
+      const marginMm = 15;
+      const rawWidthMm = contentWidth * mmPerPixel;
+      const rawHeightMm = contentHeight * mmPerPixel;
+
+      const pdfWidthMm = Math.max(297, rawWidthMm + marginMm * 2);
+      const pdfHeightMm = Math.max(210, rawHeightMm + marginMm * 2);
+
       const pdf = new jsPDF({
-        orientation,
+        orientation: pdfWidthMm > pdfHeightMm ? "landscape" : "portrait",
         unit: "mm",
-        format: denseHierarchy ? "a1" : "a2",
+        format: [pdfWidthMm, pdfHeightMm],
         compress: true
       });
 
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-      const margin = 5;
+      const margin = marginMm;
       const usableWidth = pageWidth - margin * 2;
       const usableHeight = pageHeight - margin * 2;
-      const widthScale = usableWidth / Math.max(contentWidth, 1);
-      const heightScale = usableHeight / Math.max(contentHeight, 1);
-      const fitScale = Math.min(widthScale, heightScale);
-      const contentAspectRatio = contentWidth / Math.max(contentHeight, 1);
-      const upscaleCap = smallHierarchy ? 0.84 : exportNodes.length <= 44 ? 1.02 : 1.08;
-      const exportScale = Math.min(fitScale, upscaleCap);
-      // Use more horizontal canvas for narrow/tall outputs to improve readability.
-      const horizontalStretchMultiplier =
-        contentAspectRatio < 0.68
-          ? Math.min(1.55, Math.max(1.18, widthScale / Math.max(exportScale, 0.01)))
-          : 1.08;
-      const stretchedXScale = Math.min(widthScale, exportScale * horizontalStretchMultiplier);
+
+      // Ensure stable 1:1 scaling against our vector canvas
+      const exportScale = mmPerPixel;
+      const stretchedXScale = exportScale;
 
       const initialsFromName = (name: string): string => {
         const parts = name
@@ -1094,10 +1080,6 @@ export default function App() {
       showInfoModal("PDF export failed. Please try again.", "Export");
     }
   }, [chartEmployees, showInfoModal]);
-
-  const printChart = useCallback(() => {
-    window.print();
-  }, []);
 
   const undoEmployeesChange = useCallback(() => {
     if (isReadOnlyView) {
@@ -1525,10 +1507,10 @@ export default function App() {
         employees.map((employee) =>
           reportIdSet.has(employee.id)
             ? {
-                ...employee,
-                managerId,
-                additionalManagerIds: employee.additionalManagerIds?.filter((id) => id !== managerId)
-              }
+              ...employee,
+              managerId,
+              additionalManagerIds: employee.additionalManagerIds?.filter((id) => id !== managerId)
+            }
             : employee
         )
       );
@@ -1909,14 +1891,8 @@ export default function App() {
                 </button>
               </div>
               <div className="toolbar-group toolbar-group-end toolbar-group-actions">
-                <button type="button" onClick={downloadPng}>
-                  Download PNG
-                </button>
                 <button type="button" onClick={exportPdf}>
                   Export PDF
-                </button>
-                <button type="button" onClick={printChart}>
-                  Print
                 </button>
                 <button type="button" onClick={() => setShowFilterPanel((current) => !current)}>
                   {showFilterPanel ? "Hide Filters" : "Show Filters"}

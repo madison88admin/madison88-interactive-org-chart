@@ -53,7 +53,7 @@ export function OrgChartManual({
     const layoutConfig: LayoutConfig = isCompactLayout ? COMPACT_LAYOUT_CONFIG : COMFORT_LAYOUT_CONFIG;
 
     // 1. Build and calculate layout based on mode
-    const { root, orphans, nodesArray, minX, minY, maxX, maxY } = useMemo(() => {
+    const { orphans, nodesArray, minX, minY, maxX, maxY } = useMemo(() => {
         const { root, orphans } = buildHierarchicalTree(employees);
         if (!root) {
             return { root: null, orphans: [], nodesArray: [], minX: 0, minY: 0, maxX: 0, maxY: 0 };
@@ -102,59 +102,79 @@ export function OrgChartManual({
         return <p className="empty-state">No employees matching the current filters.</p>;
     }
 
-    const { nodeWidth, nodeHeight, levelGap } = layoutConfig;
+    const { nodeWidth, nodeHeight } = layoutConfig;
 
-    // Render SVG Edge connecting parent to child using orthogonal routing
-    const renderEdge = (source: LayoutNode, target: LayoutNode) => {
-        // Connect bottoms of parents to tops of children
+    // Render SVG Edge connecting parent to child using smooth Bezier curves
+    const renderEdge = (source: LayoutNode, target: LayoutNode, isSecondary = false) => {
         const startX = source.x + nodeWidth / 2;
         const startY = source.y + nodeHeight;
         const endX = target.x + nodeWidth / 2;
         const endY = target.y;
 
-        // Midpoint for the horizontal bend
-        const midY = startY + levelGap / 2;
+        const verticalGap = endY - startY;
+        const curvature = Math.min(Math.abs(verticalGap) * 0.5, 60);
 
-        const pathData = `M ${startX} ${startY} V ${midY} H ${endX} V ${endY}`;
+        const cp1x = startX;
+        const cp1y = startY + curvature;
+        const cp2x = endX;
+        const cp2y = endY - curvature;
+
+        const pathData = `M ${startX} ${startY} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${endX} ${endY}`;
+        const edgeOpacity = Math.max(0.15, Math.min(0.6, 0.2 + (1 - zoomScale) * 0.4));
 
         return (
-            <path
-                key={`${source.id}->${target.id}`}
-                d={pathData}
-                stroke="var(--color-primary-strong)"
-                strokeWidth="2.5"
-                fill="none"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="org-link"
-                style={{ opacity: 0.6 }}
-            />
+            <g key={`${source.id}->${target.id}${isSecondary ? "-sec" : ""}`}>
+                {!isSecondary && (
+                    <path
+                        d={pathData}
+                        stroke="var(--color-primary)"
+                        strokeWidth="4"
+                        fill="none"
+                        strokeLinecap="round"
+                        className="org-link-glow"
+                        style={{ opacity: edgeOpacity * 0.3, filter: "blur(4px)" }}
+                    />
+                )}
+                <path
+                    d={pathData}
+                    stroke={isSecondary ? "rgba(101, 219, 255, 0.35)" : "var(--color-primary-medium)"}
+                    strokeWidth={isSecondary ? "1.5" : "2"}
+                    strokeDasharray={isSecondary ? "6,4" : "none"}
+                    fill="none"
+                    strokeLinecap="round"
+                    className={isSecondary ? "org-link-secondary" : "org-link"}
+                    style={{ opacity: isSecondary ? edgeOpacity * 0.8 : edgeOpacity }}
+                />
+            </g>
         );
     };
 
-    const renderEdges = (node: LayoutNode): React.ReactElement[] => {
-        const lines: React.ReactElement[] = node.children.map(child => renderEdge(node, child));
-        node.children.forEach(child => {
-            lines.push(...renderEdges(child));
-        });
-        return lines;
-    };
-
     const allEdges = useMemo(() => {
-        if (isDepartmentLaneView) {
-            return root ? renderEdges(root) : [];
-        } else {
-            // In layered/hero mode, we need to gather edges from all nodes 
-            // since there isn't necessarily a single traversal root.
-            const lines: React.ReactElement[] = [];
-            nodesArray.forEach(node => {
-                node.children.forEach(child => {
-                    lines.push(renderEdge(node, child));
+        const idToNode = new Map(nodesArray.map(n => [n.id, n]));
+        const lines: React.ReactElement[] = [];
+
+        nodesArray.forEach(node => {
+            // Primary edge (rendered by the child looking up to its primary manager)
+            if (node.employee.managerId) {
+                const parentNode = idToNode.get(node.employee.managerId);
+                if (parentNode) {
+                    lines.push(renderEdge(parentNode, node));
+                }
+            }
+
+            // Secondary edges
+            if (node.additionalManagerIds && node.additionalManagerIds.length > 0) {
+                node.additionalManagerIds.forEach(managerId => {
+                    const secondaryParentNode = idToNode.get(managerId);
+                    if (secondaryParentNode) {
+                        lines.push(renderEdge(secondaryParentNode, node, true));
+                    }
                 });
-            });
-            return lines;
-        }
-    }, [isDepartmentLaneView, root, nodesArray]);
+            }
+        });
+
+        return lines;
+    }, [nodesArray, zoomScale]);
 
     const departmentHeatLanes = useMemo(() => {
         if (!showDepartmentHeatmap || nodesArray.length === 0) {

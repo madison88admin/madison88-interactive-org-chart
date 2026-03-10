@@ -412,112 +412,7 @@ body {
   line-height: 1.2;
 }
 
-.employee-card {
-  position: relative;
-  overflow: hidden;
-  width: 210px;
-  /* Updated to match layout.ts */
-  min-height: 96px;
-  text-align: left;
-  border-radius: 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(240, 251, 255, 0.6));
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  padding: 0.6rem;
-  display: flex;
-  gap: 0.6rem;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.04);
-  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-
-.employee-card::before {
-  content: "";
-  position: absolute;
-  top: -140%;
-  left: -42%;
-  width: 70%;
-  height: 320%;
-  transform: rotate(18deg);
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
-  transition: transform 0.42s ease;
-}
-
-.employee-card:hover,
-.employee-card:focus-visible {
-  border-color: var(--color-primary-medium);
-  transform: translateY(-6px) scale(1.03);
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.12), 0 8px 16px rgba(0, 0, 0, 0.08);
-}
-
-.employee-card:hover::before,
-.employee-card:focus-visible::before {
-  transform: rotate(18deg) translateY(58%);
-}
-
-.employee-card.is-selected {
-  border-color: rgba(15, 110, 143, 0.82);
-  box-shadow: 0 0 0 2px rgba(17, 124, 161, 0.2), 0 14px 28px rgba(6, 18, 29, 0.25);
-}
-
-.employee-card.not-match {
-  opacity: 0.25;
-  filter: grayscale(1) blur(1px);
-  transform: scale(0.95);
-  box-shadow: none;
-  border-color: transparent;
-  cursor: default;
-  pointer-events: none;
-}
-
-.employee-card.not-match:hover {
-  opacity: 0.8;
-  filter: none;
-  transform: translateY(-2px);
-}
-
-.employee-card.status-promoted {
-  border-left: none;
-}
-
-.employee-card.status-enhanced {
-  border-left: none;
-}
-
-.employee-card.status-new_hire {
-  border-left: none;
-}
-
-.employee-card.is-compact .employee-title,
-.employee-card.is-compact .employee-department,
-.employee-card.is-compact .status-pill {
-  font-size: 0.68rem;
-}
-
-.employee-card.is-compact .employee-content h3 {
-  font-size: 0.74rem;
-}
-
-.employee-card.zoom-low .employee-content h3 {
-  font-size: 0.8rem;
-}
-
-.employee-card.zoom-low .employee-title {
-  display: none;
-}
-
-.employee-card.zoom-very-low .employee-department,
-.employee-card.zoom-very-low .status-pill {
-  display: none;
-}
-
-.employee-photo {
-  width: 1.95rem;
-  height: 1.95rem;
-  border-radius: 0.72rem;
-  object-fit: cover;
-  border: 1px solid rgba(255, 255, 255, 0.8);
-}
+/* Duplicate card styles removed - consolidated at the bottom */
 
 .employee-content {
   min-width: 0;
@@ -574,11 +469,20 @@ body {
 .search-input {
   width: 100%;
   border-radius: 0.86rem;
-  border: 1px solid rgba(184, 226, 242, 0.8);
-  background: rgba(245, 252, 255, 0.94);
-  backdrop-filter: blur(9px);
-  padding: 0.62rem 0.72rem;
-  color: #15384d;
+  border: 1px solid var(--glass-border);
+  background: rgba(15, 33, 50, 0.4);
+  backdrop-filter: blur(12px);
+  padding: 0.75rem 1rem;
+  color: var(--color-text);
+  font-family: var(--font-main);
+  transition: all 0.3s ease;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  background: rgba(15, 33, 50, 0.6);
+  box-shadow: 0 0 0 3px rgba(40, 194, 255, 0.2);
 }
 
 .search-actions {
@@ -1438,6 +1342,151 @@ body {
   background: rgba(16, 41, 59, 0.58);
 }
 
+/* Unified Assignment Sections Styling */
+.assign-reports-section {
+  background: rgba(15, 33, 50, 0.2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  border-radius: 1rem !important;
+  padding: 1.25rem !important;
+  margin-bottom: 2rem !important;
+}
+
+.assign-reports-section h4 {
+  font-size: 1rem !important;
+  margin-bottom: 0.75rem !important;
+  color: #cde8f6 !important;
+}
+
+.assign-reports-search input {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(139, 194, 220, 0.2) !important;
+  color: white !important;
+  padding: 0.75rem 1rem !important;
+  border-radius: 0.6rem !important;
+  font-size: 0.9rem !important;
+  width: 100% !important;
+  margin-top: 0.4rem !important;
+}
+
+.assign-reports-search input:focus {
+  border-color: var(--color-primary-medium) !important;
+  background: rgba(15, 33, 50, 0.6) !important;
+  box-shadow: 0 0 0 3px rgba(101, 219, 255, 0.1) !important;
+}
+
+.assign-report-item {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 0.8rem !important;
+  padding: 0.7rem 0.9rem !important;
+  border-radius: 0.6rem !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  border: 1px solid transparent !important;
+  margin: 0 !important;
+}
+
+.assign-report-item:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+  transform: translateX(4px);
+}
+
+.assign-report-item input[type="checkbox"] {
+  width: 1.2rem !important;
+  height: 1.2rem !important;
+  margin: 0.1rem 0 0 0 !important;
+  flex-shrink: 0 !important;
+  cursor: pointer !important;
+  accent-color: var(--color-primary);
+}
+
+.assign-report-item span {
+  font-size: 0.88rem !important;
+  color: var(--color-text) !important;
+  line-height: 1.4 !important;
+  flex: 1 !important;
+  font-weight: 500 !important;
+}
+
+.assign-reports-actions {
+  margin-top: 1rem !important;
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 0.75rem !important;
+}
+
+/* Redistribute Section Enhancements */
+.redistribute-section {
+  margin-top: 1.5rem !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+  padding-top: 1.5rem !important;
+}
+
+.redistribute-section h4 {
+  color: #65dbff !important;
+  margin-bottom: 0.5rem !important;
+}
+
+.reassign-reports-list {
+  background: rgba(10, 25, 41, 0.5) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.reassign-controls {
+  margin-top: 1.2rem !important;
+  padding: 1rem !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+  border-radius: 0.75rem !important;
+  border: 1px solid rgba(101, 219, 255, 0.2) !important;
+}
+
+.reassign-controls label span {
+  text-transform: uppercase !important;
+  font-size: 0.7rem !important;
+  letter-spacing: 0.05em !important;
+  color: #8bc2dc !important;
+  margin-bottom: 0.6rem !important;
+  font-weight: 700 !important;
+}
+
+.reassign-controls input[type="search"],
+.reassign-manager-select {
+  background: rgba(15, 33, 50, 0.8) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  color: white !important;
+  padding: 0.6rem 0.8rem !important;
+  border-radius: 0.5rem !important;
+  margin-bottom: 0.5rem !important;
+  width: 100% !important;
+}
+
+.reassign-manager-select option {
+  background: #0f2132 !important;
+  color: white !important;
+}
+
+.assign-action-btn {
+  background: var(--color-primary-medium) !important;
+  color: white !important;
+  padding: 0.6rem 1rem !important;
+  font-weight: 600 !important;
+  border-radius: 0.5rem !important;
+  transition: all 0.2s ease !important;
+}
+
+.assign-action-btn:hover:not(:disabled) {
+  background: var(--color-primary) !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 12px rgba(101, 219, 255, 0.3) !important;
+}
+
+.assign-action-btn:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+}
+
 .chart-toolbar button,
 .toolbar-extra button,
 .chip,
@@ -1488,7 +1537,7 @@ body {
   background-size: 48px 48px;
 }
 
-.chart-surface > div {
+.chart-surface>div {
   width: 100%;
   height: 100%;
   min-height: 580px;
@@ -1567,161 +1616,165 @@ body {
   stroke: rgba(190, 224, 243, 0.62);
 }
 
+/* Premium Employee Card Design */
 .employee-card {
+  position: relative;
+  overflow: hidden;
   width: 100%;
-  min-height: 100%;
   height: 100%;
-  border-radius: 0.6rem;
-  border: none;
-  background: transparent;
-  box-shadow: none;
-  gap: 0.24rem;
-  padding: 0.2rem 0.22rem;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
-  overflow: visible;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.6rem;
+  border-radius: 1rem;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: var(--glass-shadow);
+  transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+  cursor: pointer;
+  text-decoration: none;
 }
 
-.node-shell .employee-card {
-  width: 100%;
-  min-height: 100%;
-  height: 100%;
-}
-
-.node-shell .employee-card.is-compact {
-  padding: 0.18rem 0.2rem;
-  gap: 0.22rem;
-}
-
-.node-shell .employee-card:not(.is-compact) {
-  padding: 0.22rem 0.24rem;
-  gap: 0.28rem;
-}
-
-.employee-card::before {
-  display: none;
-}
-
-.employee-card:hover,
-.employee-card:focus-visible {
-  transform: translateY(-1px);
-  box-shadow: none;
+.employee-card:hover {
+  transform: translateY(-8px) scale(1.04);
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
 }
 
 .employee-card.is-selected {
-  box-shadow: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(40, 194, 255, 0.3), var(--glass-shadow);
 }
 
-.employee-card.focus-pulse {
-  animation: none;
+.card-glass-shine {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 50%, transparent 50.1%, transparent 100%);
+  opacity: 0.4;
+  pointer-events: none;
+  z-index: 1;
 }
 
-.employee-card.not-match {
-  opacity: 0.32;
-  filter: grayscale(0.95);
-  transform: scale(0.97);
+.card-border-glow {
+  position: absolute;
+  inset: -1px;
+  border-radius: 1rem;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2), transparent 40%, rgba(255, 255, 255, 0.1));
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  -webkit-mask-composite: destination-out;
+  pointer-events: none;
+  z-index: 2;
+  transition: opacity 0.4s ease;
+}
+
+.employee-card:hover .card-border-glow {
+  opacity: 1;
+  background: linear-gradient(135deg, var(--color-primary), transparent 50%, var(--color-primary-medium));
+}
+
+.employee-photo-wrapper {
+  position: relative;
+  width: 4rem;
+  height: 4rem;
+  flex-shrink: 0;
+  z-index: 5;
+  transition: transform 0.3s ease;
+}
+
+.employee-card.is-compact .employee-photo-wrapper {
+  width: 3.2rem;
+  height: 3.2rem;
 }
 
 .employee-photo {
-  position: relative;
-  inset: auto;
-  z-index: 0;
-  width: 4.4rem;
-  height: 4.4rem;
+  width: 100%;
+  height: 100%;
   border-radius: 50%;
   object-fit: cover;
-  object-position: center 30%;
-  border: 2.5px solid rgba(150, 208, 236, 0.9);
-  background: rgba(10, 28, 42, 0.75);
-  box-shadow: 0 10px 22px rgba(2, 14, 23, 0.42);
-  transition: transform 0.24s ease, border-color 0.24s ease, box-shadow 0.24s ease;
+  border: 2px solid rgba(150, 208, 236, 0.8);
+  background: var(--color-bg);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
 }
 
-.employee-card:hover .employee-photo,
-.employee-card:focus-visible .employee-photo {
-  transform: translateY(-1px) scale(1.03);
-  border-color: rgba(101, 219, 255, 0.98);
-  box-shadow: 0 12px 25px rgba(2, 13, 21, 0.48);
+.status-indicator {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--color-bg);
+  z-index: 6;
 }
 
-.employee-card.is-selected .employee-photo {
-  border-color: rgba(60, 204, 255, 0.98);
-  box-shadow: 0 0 0 3px rgba(53, 194, 247, 0.22), 0 12px 25px rgba(2, 13, 21, 0.5);
+.status-indicator.status-promoted {
+  background-color: var(--color-promoted);
 }
 
-.employee-card.focus-pulse .employee-photo {
-  animation: avatar-focus-pulse 1.2s ease;
+.status-indicator.status-enhanced {
+  background-color: var(--color-enhanced);
 }
 
-.employee-card.status-promoted .employee-photo {
-  border-color: var(--color-promoted);
+.status-indicator.status-new_hire {
+  background-color: var(--color-new_hire);
 }
 
-.employee-card.status-enhanced .employee-photo {
-  border-color: var(--color-enhanced);
-}
-
-.employee-card.status-new_hire .employee-photo {
-  border-color: var(--color-new-hire);
+.status-indicator.status-vacant {
+  background-color: #ef4444;
 }
 
 .employee-content {
-  position: static;
   width: 100%;
-  min-width: 0;
   text-align: center;
-  padding: 0;
-  border-top: none;
-  background: transparent;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
 }
 
 .employee-content h3 {
   margin: 0;
-  color: #eaf7ff;
-  font-size: 0.66rem;
+  color: var(--color-text);
+  font-size: 0.85rem;
   font-weight: 800;
-  line-height: 1.12;
-  text-align: center;
+  line-height: 1.2;
   text-transform: uppercase;
-  letter-spacing: 0.01em;
-  text-shadow: 0 2px 8px rgba(1, 8, 14, 0.8);
-  max-width: 100%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  letter-spacing: 0.02em;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.employee-card.is-compact .employee-content h3 {
+  font-size: 0.72rem;
 }
 
 .employee-title {
-  margin: 0.06rem 0 0;
-  color: rgba(216, 238, 251, 0.95);
-  font-size: 0.6rem;
-  font-weight: 700;
-  line-height: 1.16;
-  text-shadow: 0 2px 8px rgba(1, 8, 14, 0.8);
-  white-space: normal;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  margin: 0;
+  color: var(--color-text-dim);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.25;
 }
 
-.employee-department {
-  display: none;
+.employee-card.is-compact .employee-title {
+  font-size: 0.64rem;
 }
 
+.employee-department,
 .status-pill {
   display: none;
+  /* Hidden simplified view for the main chart */
 }
 
-.employee-card.zoom-low .employee-title {
-  display: none;
-}
-
-.employee-card.zoom-very-low .employee-title,
-.employee-card.zoom-very-low .employee-content h3 {
-  display: none;
+.employee-card.not-match {
+  opacity: 0.3;
+  filter: grayscale(0.8);
+  pointer-events: none;
 }
 
 @keyframes avatar-focus-pulse {
@@ -1742,9 +1795,11 @@ body {
   0% {
     box-shadow: 0 0 0 0 rgba(71, 203, 255, 0.7), 0 14px 28px rgba(4, 13, 21, 0.3);
   }
+
   45% {
     box-shadow: 0 0 0 12px rgba(71, 203, 255, 0), 0 18px 30px rgba(4, 13, 21, 0.35);
   }
+
   100% {
     box-shadow: 0 0 0 0 rgba(71, 203, 255, 0), 0 14px 28px rgba(4, 13, 21, 0.3);
   }
@@ -1956,7 +2011,7 @@ body {
   gap: 0.22rem;
 }
 
-.form-field > span {
+.form-field>span {
   font-size: 0.73rem;
   font-weight: 800;
   letter-spacing: 0.04em;
@@ -1990,6 +2045,27 @@ body {
 
 .add-employee-form input::placeholder {
   color: #6f8ea2;
+}
+
+/* Multi-select styling for Additional Managers */
+.add-employee-form select[multiple] {
+  min-height: 120px;
+  padding: 0.5rem;
+  background: rgba(15, 33, 50, 0.4);
+  border: 1px solid var(--glass-border);
+  color: var(--color-text);
+  overflow-y: auto;
+}
+
+.add-employee-form select[multiple] option {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  white-space: normal;
+}
+
+.add-employee-form select[multiple] option:checked {
+  background: var(--color-primary-medium) linear-gradient(0deg, var(--color-primary-medium) 0%, var(--color-primary-medium) 100%);
+  color: white;
 }
 
 .regional-roles-editor {
@@ -2034,7 +2110,7 @@ body {
   align-items: start;
 }
 
-.regional-roles-editor > .ghost-btn {
+.regional-roles-editor>.ghost-btn {
   width: 100%;
   text-align: center;
 }
@@ -2319,7 +2395,7 @@ body {
     display: none;
   }
 
-  .chart-surface > div {
+  .chart-surface>div {
     min-height: 500px;
   }
 
@@ -2723,7 +2799,7 @@ body {
   padding: 0.14rem 0.34rem;
 }
 
-.chart-surface > div {
+.chart-surface>div {
   min-height: clamp(620px, 70vh, 860px);
 }
 
@@ -2923,7 +2999,8 @@ body {
 }
 
 @media (max-width: 760px) {
-  .chart-surface > div,
+
+  .chart-surface>div,
   .chart-empty-state {
     min-height: 480px;
   }
@@ -3246,6 +3323,7 @@ body {
   overflow: hidden !important;
   text-overflow: ellipsis !important;
   display: -webkit-box !important;
+  line-clamp: 2 !important;
   -webkit-line-clamp: 2 !important;
   -webkit-box-orient: vertical !important;
 }
@@ -3261,6 +3339,7 @@ body {
   overflow: hidden !important;
   text-overflow: ellipsis !important;
   display: -webkit-box !important;
+  line-clamp: 2 !important;
   -webkit-line-clamp: 2 !important;
   -webkit-box-orient: vertical !important;
 }

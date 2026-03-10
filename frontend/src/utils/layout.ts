@@ -8,24 +8,24 @@ export interface LayoutConfig {
 }
 
 export const DEFAULT_LAYOUT_CONFIG: LayoutConfig = {
-    levelGap: 120,
-    siblingGap: 60,
-    nodeWidth: 210,
-    nodeHeight: 116
+    levelGap: 100,
+    siblingGap: 48,
+    nodeWidth: 200,
+    nodeHeight: 110
 };
 
 export const COMPACT_LAYOUT_CONFIG: LayoutConfig = {
-    levelGap: 104,
-    siblingGap: 52,
-    nodeWidth: 210,
-    nodeHeight: 122
+    levelGap: 72,
+    siblingGap: 36,
+    nodeWidth: 190,
+    nodeHeight: 106
 };
 
 export const COMFORT_LAYOUT_CONFIG: LayoutConfig = {
-    levelGap: 150,
-    siblingGap: 80,
-    nodeWidth: 236,
-    nodeHeight: 140
+    levelGap: 130,
+    siblingGap: 64,
+    nodeWidth: 220,
+    nodeHeight: 130
 };
 
 export interface LayoutNode {
@@ -35,6 +35,7 @@ export interface LayoutNode {
     x: number;
     y: number;
     subtreeWidth: number;
+    additionalManagerIds: string[];
 }
 
 export interface BuildTreeResult {
@@ -62,7 +63,8 @@ export function buildHierarchicalTree(employees: Employee[]): BuildTreeResult {
             children: [],
             x: 0,
             y: 0,
-            subtreeWidth: 0
+            subtreeWidth: 0,
+            additionalManagerIds: emp.additionalManagerIds ?? []
         });
     });
 
@@ -225,7 +227,7 @@ export function calculateDepartmentLaneLayout(
     // Pre-process: we treat all depth=1 nodes as roots of vertical lanes.
     // Their children will just flow straight down under them.
 
-    const modifiedConfig = { ...config, levelGap: config.levelGap * 0.75 };
+    const modifiedConfig = { ...config, levelGap: Math.max(30, config.levelGap * 0.45) };
 
     // Step A: Calculate simplified subtree widths.
     // A vertical lane takes exactly max(nodeWidth, children_lane_width).
@@ -275,8 +277,8 @@ export function calculateDepartmentLaneLayout(
                 rows.push(children.slice(i, i + maxColumns));
             }
 
-            const horizontalGap = modifiedConfig.siblingGap;
-            const rowGap = Math.round(modifiedConfig.levelGap * 0.9);
+            const horizontalGap = modifiedConfig.siblingGap * 1.5;
+            const rowGap = Math.round(modifiedConfig.levelGap * 1.5);
             let currentRowTop = topY + modifiedConfig.nodeHeight + modifiedConfig.levelGap;
 
             for (const row of rows) {
@@ -316,11 +318,15 @@ export function calculateDepartmentLaneLayout(
 
 function calculateVerticalSpan(node: LayoutNode, config: LayoutConfig): number {
     if (node.children.length === 0) return config.nodeHeight;
-    let span = config.nodeHeight + config.levelGap;
+
+    // In vertical lane mode, children are stacked one after another.
+    // Total span = height of current node + levelGap + sum of (vertical span of each child + levelGap)
+    let childrenSpan = 0;
     for (const child of node.children) {
-        span += calculateVerticalSpan(child, config) + config.levelGap;
+        childrenSpan += calculateVerticalSpan(child, config) + config.levelGap;
     }
-    return span - config.levelGap;
+
+    return config.nodeHeight + config.levelGap + childrenSpan - config.levelGap;
 }
 
 /**
@@ -345,7 +351,8 @@ export function calculateLayeredLayout(employees: Employee[], config: LayoutConf
             children: [],
             x: 0,
             y: 0,
-            subtreeWidth: config.nodeWidth
+            subtreeWidth: config.nodeWidth,
+            additionalManagerIds: emp.additionalManagerIds ?? []
         };
         idToNode.set(emp.id, node);
         const levelGroup = levelMap.get(level) || [];
