@@ -3150,6 +3150,24 @@ body {
     0 18px 36px rgba(2, 13, 21, 0.66);
 }
 
+/* Color Toggle Overrides */
+.node-shell .employee-card.no-colors .employee-photo {
+  --node-ring-color: transparent !important;
+  border-color: rgba(150, 208, 236, 0.2) !important;
+  box-shadow: 0 14px 30px rgba(2, 13, 21, 0.55) !important;
+}
+
+.node-shell .employee-card.no-colors:hover .employee-photo,
+.node-shell .employee-card.no-colors:focus-visible .employee-photo {
+  box-shadow: 0 16px 34px rgba(2, 13, 21, 0.62) !important;
+}
+
+.node-shell .employee-card.no-colors.is-selected .employee-photo {
+  border-color: rgba(248, 253, 255, 0.98) !important;
+  box-shadow: 0 18px 36px rgba(2, 13, 21, 0.66) !important;
+}
+
+
 .node-shell .employee-card.not-match {
   opacity: 0.35;
   filter: grayscale(0.92);

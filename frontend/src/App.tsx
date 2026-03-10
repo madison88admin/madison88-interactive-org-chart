@@ -1849,7 +1849,7 @@ export default function App() {
         </div>
 
         <div className="scope-support-panels">
-          <Legend compact />
+          <Legend compact showStatusColors={showStatusColors} />
         </div>
       </section>
 

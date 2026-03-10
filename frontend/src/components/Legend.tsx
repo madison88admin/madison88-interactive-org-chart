@@ -1,8 +1,12 @@
 interface LegendProps {
   compact?: boolean;
+  showStatusColors?: boolean;
 }
 
-export function Legend({ compact = false }: LegendProps) {
+export function Legend({ compact = false, showStatusColors = true }: LegendProps) {
+  if (!showStatusColors) {
+    return null;
+  }
   return (
     <section className={`legend-panel ${compact ? "legend-panel-compact" : ""}`} aria-label="Legend">
       {!compact && <h3>Legend</h3>}
