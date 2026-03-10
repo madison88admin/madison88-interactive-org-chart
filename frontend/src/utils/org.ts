@@ -1,19 +1,23 @@
 export type EmployeeStatus = "standard" | "promoted" | "enhanced" | "new_hire" | "vacant";
-export type RoleLevel = "CEO" | "President" | "VP" | "Director" | "Sr. Manager" | "Manager" | "Assoc. Manager" | "Supervisor" | "Sr. Specialist" | "Specialist" | "Staff" | "Assoc. Staff";
+export type RoleLevel =
+  | "Level 0"
+  | "Level 1"
+  | "Level 2"
+  | "Level 3"
+  | "Level 4"
+  | "Level 5"
+  | "Level 6"
+  | "Level 7";
 
 export const ROLE_LEVELS_ORDER: RoleLevel[] = [
-  "CEO",
-  "President",
-  "VP",
-  "Director",
-  "Sr. Manager",
-  "Manager",
-  "Assoc. Manager",
-  "Supervisor",
-  "Sr. Specialist",
-  "Specialist",
-  "Staff",
-  "Assoc. Staff"
+  "Level 0",
+  "Level 1",
+  "Level 2",
+  "Level 3",
+  "Level 4",
+  "Level 5",
+  "Level 6",
+  "Level 7"
 ];
 
 export interface Employee {
@@ -176,10 +180,13 @@ export const isExecutiveTitle = (title: string): boolean => {
   return (
     /\bceo\b/.test(normalized) ||
     normalized.includes("chief executive") ||
+    /\bcfo\b/.test(normalized) ||
+    normalized.includes("chief financial") ||
     /\bchief\b/.test(normalized) ||
     /\bpresident\b/.test(normalized) ||
     /\bvice president\b/.test(normalized) ||
-    /\bvp\b/.test(normalized)
+    /\bvp\b/.test(normalized) ||
+    /\bdirector\b/.test(normalized)
   );
 };
 
@@ -190,23 +197,64 @@ export const isExecutiveEmployee = (employee: Employee): boolean => {
 export const getRoleLevel = (title: string): RoleLevel => {
   const normalized = title.toLowerCase();
 
-  if (normalized === "ceo" || normalized.includes("chief executive")) return "CEO";
-  // Check VP before President so "Vice President" doesn't get classified as "President".
-  if (/\bvice president\b/.test(normalized) || /\bvp\b/.test(normalized)) return "VP";
-  if (/\bpresident\b/.test(normalized)) return "President";
-  if (normalized.includes("director")) return "Director";
+  if (normalized === "ceo" || normalized.includes("chief executive") || /\bpresident\b/.test(normalized)) {
+    return "Level 0";
+  }
 
-  if (normalized.includes("sr. manager") || normalized.includes("senior manager")) return "Sr. Manager";
-  if (normalized.includes("assoc. manager") || normalized.includes("associate manager")) return "Assoc. Manager";
-  if (normalized.includes("manager") || normalized.includes("head")) return "Manager";
+  if (
+    /\bvice president\b/.test(normalized) ||
+    /\bvp\b/.test(normalized) ||
+    /\bcfo\b/.test(normalized) ||
+    normalized.includes("chief financial") ||
+    normalized.includes("director")
+  ) {
+    return "Level 1";
+  }
 
-  if (normalized.includes("supervisor")) return "Supervisor";
+  if (normalized.includes("sr. manager") || normalized.includes("senior manager")) {
+    return "Level 2";
+  }
 
-  if (normalized.includes("sr. specialist") || normalized.includes("senior specialist") || normalized.includes("lead")) return "Sr. Specialist";
-  if (normalized.includes("specialist") || normalized.includes("analyst") || normalized.includes("coordinator")) return "Specialist";
+  if (
+    normalized.includes("assoc. manager") ||
+    normalized.includes("associate manager") ||
+    normalized.includes("manager")
+  ) {
+    return "Level 3";
+  }
 
-  if (normalized.includes("staff")) return "Staff";
-  return "Assoc. Staff";
+  if (normalized.includes("supervisor") || normalized.includes("lead")) {
+    return "Level 4";
+  }
+
+  if (
+    normalized.includes("engineer") ||
+    normalized.includes("sr. specialist") ||
+    normalized.includes("senior specialist") ||
+    normalized.includes("sr. designer") ||
+    normalized.includes("senior designer")
+  ) {
+    return "Level 5";
+  }
+
+  if (
+    normalized.includes("specialist") ||
+    normalized.includes("coordinator") ||
+    normalized.includes("planner") ||
+    normalized.includes("developer")
+  ) {
+    return "Level 6";
+  }
+
+  if (
+    normalized.includes("associate") ||
+    normalized.includes("assistant") ||
+    normalized.includes("intern")
+  ) {
+    return "Level 7";
+  }
+
+  return "Level 6";
 };
 
 const roleWeight = (title: string): number => {
@@ -217,6 +265,9 @@ const roleWeight = (title: string): number => {
   }
   if (/\bvice president\b/.test(normalized) || /\bvp\b/.test(normalized)) {
     return 90;
+  }
+  if (/\bcfo\b/.test(normalized) || normalized.includes("chief financial")) {
+    return 89;
   }
   if (/\bpresident\b/.test(normalized)) {
     return 95;

@@ -10,18 +10,14 @@ const STATUS_LABEL: Record<EmployeeStatus, string> = {
 };
 
 const ROLE_CLASS: Record<RoleLevel, string> = {
-  CEO: "executive",
-  President: "executive",
-  VP: "vp",
-  Director: "director",
-  "Sr. Manager": "director",
-  Manager: "manager",
-  "Assoc. Manager": "manager",
-  Supervisor: "lead",
-  "Sr. Specialist": "lead",
-  Specialist: "member",
-  Staff: "member",
-  "Assoc. Staff": "member"
+  "Level 0": "executive",
+  "Level 1": "vp",
+  "Level 2": "director",
+  "Level 3": "manager",
+  "Level 4": "lead",
+  "Level 5": "lead",
+  "Level 6": "member",
+  "Level 7": "member"
 };
 interface EmployeeCardProps {
   employee: Employee;

@@ -28,6 +28,16 @@ interface FilterPanelProps {
 
 export function FilterPanel(props: FilterPanelProps) {
   const activeScope = props.viewMode === "location" ? "regional" : props.viewMode === "department" ? "departmental" : "global";
+  const roleLevelOptions: Array<{ level: RoleLevel; label: string }> = [
+    { level: "Level 0", label: "Level 0 - CEO / President" },
+    { level: "Level 1", label: "Level 1 - VP / CFO / Director" },
+    { level: "Level 2", label: "Level 2 - Senior Manager" },
+    { level: "Level 3", label: "Level 3 - Manager / Associate Manager" },
+    { level: "Level 4", label: "Level 4 - Supervisor / Lead" },
+    { level: "Level 5", label: "Level 5 - Engineer / Sr. Specialist / Sr. Designer" },
+    { level: "Level 6", label: "Level 6 - Specialist / Coordinator / Planner / Developer" },
+    { level: "Level 7", label: "Level 7 - Associate / Assistant / Intern" }
+  ];
 
   const activateGlobalScope = () => {
     props.onResetAll();
@@ -114,6 +124,23 @@ export function FilterPanel(props: FilterPanelProps) {
           </div>
         </div>
       )}
+
+      <div className="filter-group">
+        <h3>Hierarchy Level</h3>
+        <p className="group-hint">Apply your Level 0 to Level 7 role mapping.</p>
+        <div className="chip-grid">
+          {roleLevelOptions.map((option) => (
+            <button
+              type="button"
+              key={option.level}
+              className={`chip ${props.roleLevel === option.level ? "active" : ""}`}
+              onClick={() => props.onRoleLevel(props.roleLevel === option.level ? null : option.level)}
+            >
+              {option.label} ({props.roleLevelCounts[option.level] ?? 0})
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

@@ -23,6 +23,7 @@ import {
   resolveEmployeeForLocation,
   filterEmployees,
   getRoleLevel,
+  ROLE_LEVELS_ORDER,
   ensureConnectedHierarchy,
   inferHierarchy,
   isExecutiveEmployee,
@@ -65,6 +66,21 @@ const EMPLOYEES_DATA_SIGNATURE = hashString(
 );
 const EMPLOYEES_STORAGE_KEY = `${EMPLOYEES_STORAGE_PREFIX}_${APP_BUILD_ID}_${EMPLOYEES_DATA_SIGNATURE}`;
 const HISTORY_LIMIT = 40;
+const EXECUTIVE_ROLE_LEVELS: RoleLevel[] = ["Level 0", "Level 1"];
+const LEGACY_ROLE_TO_LEVEL: Record<string, RoleLevel> = {
+  CEO: "Level 0",
+  President: "Level 0",
+  VP: "Level 1",
+  Director: "Level 1",
+  "Sr. Manager": "Level 2",
+  Manager: "Level 3",
+  "Assoc. Manager": "Level 3",
+  Supervisor: "Level 4",
+  "Sr. Specialist": "Level 5",
+  Specialist: "Level 6",
+  Staff: "Level 6",
+  "Assoc. Staff": "Level 7"
+};
 type LocalEmployeesCache = {
   data: Employee[];
   updatedAt: string | null;
@@ -463,7 +479,16 @@ export default function App() {
           acc[level] += 1;
           return acc;
         },
-        { CEO: 0, President: 0, VP: 0, Director: 0, "Sr. Manager": 0, Manager: 0, "Assoc. Manager": 0, Supervisor: 0, "Sr. Specialist": 0, Specialist: 0, Staff: 0, "Assoc. Staff": 0 }
+        {
+          "Level 0": 0,
+          "Level 1": 0,
+          "Level 2": 0,
+          "Level 3": 0,
+          "Level 4": 0,
+          "Level 5": 0,
+          "Level 6": 0,
+          "Level 7": 0
+        }
       ),
     [contextualEmployees]
   );
@@ -1322,7 +1347,7 @@ export default function App() {
     setLocation(null);
     setQuickFilters([]);
     setSearchQuery("");
-    setRoleLevel("CEO");
+    setRoleLevel("Level 0");
     setExecutiveOnly(true);
     setIsDepartmentLaneView(false);
   }, []);
@@ -1616,10 +1641,11 @@ export default function App() {
       applyAllEmployeesPreset();
     }
 
-    if (role && (["CEO", "President", "VP", "Director", "Sr. Manager", "Manager", "Assoc. Manager", "Supervisor", "Sr. Specialist", "Specialist", "Staff", "Assoc. Staff"] as string[]).includes(role)) {
-      const roleValue = role as RoleLevel;
+    const mappedRole = role ? LEGACY_ROLE_TO_LEVEL[role] ?? role : null;
+    if (mappedRole && ROLE_LEVELS_ORDER.includes(mappedRole as RoleLevel)) {
+      const roleValue = mappedRole as RoleLevel;
       setRoleLevel(roleValue);
-      setExecutiveOnly(roleValue === "CEO" || roleValue === "President" || roleValue === "VP");
+      setExecutiveOnly(EXECUTIVE_ROLE_LEVELS.includes(roleValue));
     }
 
     if (query) {
@@ -1645,7 +1671,7 @@ export default function App() {
 
     const params = new URLSearchParams();
     const preset =
-      executiveOnly && (roleLevel === "CEO" || roleLevel === "President" || roleLevel === "VP")
+      executiveOnly && roleLevel !== null && EXECUTIVE_ROLE_LEVELS.includes(roleLevel)
         ? "leadership"
         : viewMode === "location"
           ? "regional"
@@ -2042,12 +2068,14 @@ export default function App() {
                     setExecutiveOnly((current) => {
                       const next = !current;
                       if (next) {
-                        setRoleLevel(employees.find(e => e.id === "001")?.title.toLowerCase().includes("ceo") ? "CEO" : "President");
+                        const rootTitle = employees.find((employee) => employee.id === "001")?.title ?? "";
+                        const rootLevel = getRoleLevel(rootTitle);
+                        setRoleLevel(rootLevel === "Level 0" ? "Level 0" : "Level 1");
                         setViewMode("full");
                         setDepartment(null);
                         setLocation(null);
                         setSearchQuery("");
-                      } else if (roleLevel === "CEO" || roleLevel === "President" || roleLevel === "VP") {
+                      } else if (roleLevel && EXECUTIVE_ROLE_LEVELS.includes(roleLevel)) {
                         setRoleLevel(null);
                       }
                       return next;
@@ -2058,10 +2086,10 @@ export default function App() {
                     if (level) {
                       setViewMode("full");
                     }
-                    if (level !== "CEO" && level !== "President" && level !== "VP" && executiveOnly) {
+                    if (level && !EXECUTIVE_ROLE_LEVELS.includes(level) && executiveOnly) {
                       setExecutiveOnly(false);
                     }
-                    if ((level === "CEO" || level === "President" || level === "VP") && !executiveOnly) {
+                    if (level && EXECUTIVE_ROLE_LEVELS.includes(level) && !executiveOnly) {
                       setExecutiveOnly(true);
                     }
                   }}

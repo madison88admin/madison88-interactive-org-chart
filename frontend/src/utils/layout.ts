@@ -95,7 +95,8 @@ export function buildHierarchicalTree(employees: Employee[]): BuildTreeResult {
 
     if (rootCandidates.length > 0) {
         root =
-            rootCandidates.find(candidate => getRoleLevel(candidate.employee.title) === "CEO")
+            rootCandidates.find(candidate => getRoleLevel(candidate.employee.title) === "Level 0")
+            ?? rootCandidates.find(candidate => getRoleLevel(candidate.employee.title) === "Level 1")
             ?? rootCandidates[0];
 
         // Keep additional root-level managers visible instead of treating them as orphans.
