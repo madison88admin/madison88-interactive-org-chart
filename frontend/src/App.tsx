@@ -232,6 +232,7 @@ export default function App() {
   const [showFilterPanel, setShowFilterPanel] = useState(true);
   const [isTabletViewport, setIsTabletViewport] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const [showStatusColors, setShowStatusColors] = useState(true);
   const [isReadOnlyView, setIsReadOnlyView] = useState(() => {
     return readonlyOverride ?? LIVE_READONLY_DEFAULT;
   });
@@ -1891,6 +1892,9 @@ export default function App() {
                 </button>
               </div>
               <div className="toolbar-group toolbar-group-end toolbar-group-actions">
+                <button type="button" onClick={() => setShowStatusColors((current) => !current)}>
+                  {showStatusColors ? "Hide Colors" : "Show Colors"}
+                </button>
                 <button type="button" onClick={exportPdf}>
                   Export PDF
                 </button>
@@ -1993,6 +1997,8 @@ export default function App() {
                     zoomScale={zoom}
                     matchingIds={chartMatchingIds}
                     onDimensionsChange={setChartDims}
+                    showStatusColors={showStatusColors}
+                    onDropEmployee={(sourceId, targetId) => assignReportsToManager(targetId, [sourceId])}
                   />
                 </div>
               </div>

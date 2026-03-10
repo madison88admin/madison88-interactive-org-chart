@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import type { Employee } from "../utils/org";
 import { EmployeeCard } from "./EmployeeCard";
 import {
@@ -25,6 +25,8 @@ interface OrgChartManualProps {
     zoomScale: number;
     matchingIds?: Set<string>;
     onDimensionsChange?: (dims: { width: number; height: number }) => void;
+    onDropEmployee?: (draggedId: string, targetId: string) => void;
+    showStatusColors?: boolean;
 }
 
 const departmentHue = (department: string) => {
@@ -48,9 +50,12 @@ export function OrgChartManual({
     onHoverMove,
     zoomScale,
     matchingIds,
-    onDimensionsChange
+    onDimensionsChange,
+    onDropEmployee,
+    showStatusColors = true
 }: OrgChartManualProps) {
     const layoutConfig: LayoutConfig = isCompactLayout ? COMPACT_LAYOUT_CONFIG : COMFORT_LAYOUT_CONFIG;
+    const [dragTargetId, setDragTargetId] = useState<string | null>(null);
 
     // 1. Build and calculate layout based on mode
     const { orphans, nodesArray, minX, minY, maxX, maxY } = useMemo(() => {
@@ -286,13 +291,51 @@ export function OrgChartManual({
                         zIndex: 2
                     }}
                 >
-                    <div className="node-shell" style={{ width: "100%", height: "100%" }}>
+                    <div
+                        className={`node-shell ${dragTargetId === node.id ? "drop-target-active" : ""}`}
+                        style={{
+                            width: "100%",
+                            height: "100%",
+                            border: dragTargetId === node.id ? "3px dashed var(--color-primary-medium)" : "none",
+                            borderRadius: "16px",
+                            boxSizing: "border-box"
+                        }}
+                        draggable={!exportMode && !isDepartmentLaneView}
+                        onDragStart={(e) => {
+                            if (exportMode || isDepartmentLaneView) return;
+                            e.dataTransfer.setData("application/employee-id", node.id);
+                            e.dataTransfer.effectAllowed = "move";
+                        }}
+                        onDragOver={(e) => {
+                            if (exportMode || isDepartmentLaneView) return;
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = "move";
+                            if (dragTargetId !== node.id) {
+                                setDragTargetId(node.id);
+                            }
+                        }}
+                        onDragLeave={() => {
+                            if (dragTargetId === node.id) {
+                                setDragTargetId(null);
+                            }
+                        }}
+                        onDrop={(e) => {
+                            if (exportMode || isDepartmentLaneView) return;
+                            e.preventDefault();
+                            setDragTargetId(null);
+                            const draggedId = e.dataTransfer.getData("application/employee-id");
+                            if (draggedId && draggedId !== node.id && onDropEmployee) {
+                                onDropEmployee(draggedId, node.id);
+                            }
+                        }}
+                    >
                         <EmployeeCard
                             employee={node.employee}
                             selected={node.id === selectedEmployeeId || node.id === hoveredEmployeeId}
                             isMatch={matchingIds ? matchingIds.has(node.id) : true}
                             compact={isCompactLayout}
                             zoomScale={zoomScale}
+                            showStatusColors={showStatusColors}
                             onClick={(id) => onSelect(id)}
                             onHover={onHover}
                             onHoverMove={onHoverMove}

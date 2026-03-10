@@ -142,6 +142,20 @@ export function buildHierarchicalTree(employees: Employee[]): BuildTreeResult {
  * then a pre-order traversal to position exactly.
  */
 export function calculateTreeLayout(root: LayoutNode, config: LayoutConfig): void {
+    // Step 0: Sort children by department then name to clump them visually
+    const sortChildren = (node: LayoutNode) => {
+        node.children.sort((a, b) => {
+            const deptA = a.employee.department || "";
+            const deptB = b.employee.department || "";
+            if (deptA !== deptB) {
+                return deptA.localeCompare(deptB);
+            }
+            return a.employee.name.localeCompare(b.employee.name);
+        });
+        node.children.forEach(sortChildren);
+    };
+    sortChildren(root);
+
     // Step A: Calculate subtree widths from bottom up
     calculateSubtreeWidths(root, config);
 

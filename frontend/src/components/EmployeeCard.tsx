@@ -4,8 +4,8 @@ import { resolveEmployeePhoto } from "../utils/photo";
 const STATUS_LABEL: Record<EmployeeStatus, string> = {
   standard: "Standard",
   promoted: "Promoted 2026",
-  enhanced: "Enhanced Title 2026",
-  new_hire: "New Hire 2026",
+  enhanced: "Enhanced title 2026",
+  new_hire: "New hire 2026",
   vacant: "Vacant Position"
 };
 
@@ -29,6 +29,7 @@ interface EmployeeCardProps {
   compact?: boolean;
   zoomScale?: number;
   isMatch?: boolean;
+  showStatusColors?: boolean;
   onClick: (id: string) => void;
   onHover?: (id: string | null) => void;
   onHoverMove?: (position: { x: number; y: number }) => void;
@@ -40,11 +41,12 @@ export function EmployeeCard({
   isMatch = true,
   compact = false,
   zoomScale = 1,
+  showStatusColors = true,
   onClick,
   onHover,
   onHoverMove
 }: EmployeeCardProps) {
-  const statusClass = employee.status === "standard" ? "" : `status-${employee.status}`;
+  const statusClass = showStatusColors && employee.status !== "standard" ? `status-${employee.status}` : "";
   const isLowZoom = compact && zoomScale < 0.5;
   const isVeryLowZoom = compact && zoomScale < 0.4;
   const fallbackPhoto = resolveEmployeePhoto("", employee.name, `fallback-${employee.id}`);
@@ -78,7 +80,7 @@ export function EmployeeCard({
             event.currentTarget.src = fallbackPhoto;
           }}
         />
-        {employee.status !== "standard" && !isVeryLowZoom && (
+        {showStatusColors && employee.status !== "standard" && !isVeryLowZoom && (
           <div className={`status-indicator status-${employee.status}`} />
         )}
       </div>
@@ -93,7 +95,7 @@ export function EmployeeCard({
             <span className="employee-department">{employee.department}</span>
           </div>
         )}
-        {!compact && (
+        {!compact && showStatusColors && (
           <div className="status-pill-wrapper">
             <span className="status-pill">{STATUS_LABEL[employee.status]}</span>
           </div>

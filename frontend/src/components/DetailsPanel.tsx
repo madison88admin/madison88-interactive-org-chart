@@ -48,8 +48,8 @@ interface DetailsPanelProps {
 const STATUS_LABEL: Record<Employee["status"], string> = {
   standard: "Standard Role",
   promoted: "Promoted 2026",
-  enhanced: "Enhanced Title 2026",
-  new_hire: "New Hire 2026",
+  enhanced: "Enhanced title 2026",
+  new_hire: "New hire 2026",
   vacant: "Vacant Position"
 };
 const STATUS_FORM_OPTIONS: Array<{ value: Employee["status"]; label: string }> = [
@@ -1106,6 +1106,17 @@ export function DetailsPanel({
                   }}
                 >
                   Cancel
+                </button>
+                <button
+                  type="button"
+                  className="link-btn"
+                  style={{ color: "var(--color-status-danger)", borderColor: "var(--color-status-danger)" }}
+                  onClick={() => {
+                    onDeleteEmployee(persistedSelectedEmployee.id);
+                    setShowEditForm(false);
+                  }}
+                >
+                  Delete Employee
                 </button>
               </div>
             </form>
