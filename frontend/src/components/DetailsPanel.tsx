@@ -43,6 +43,7 @@ interface DetailsPanelProps {
   onNotify: (message: string, title?: string) => void;
   readonlyMode?: boolean;
   isHoverPreview?: boolean;
+  showStatusColors?: boolean;
 }
 
 const STATUS_LABEL: Record<Employee["status"], string> = {
@@ -228,7 +229,8 @@ export function DetailsPanel({
   onUploadPhoto,
   onNotify,
   readonlyMode = false,
-  isHoverPreview = false
+  isHoverPreview = false,
+  showStatusColors = true
 }: DetailsPanelProps) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
@@ -419,7 +421,9 @@ export function DetailsPanel({
         <div>
           <h3>{selectedEmployee.name}</h3>
           <p className="detail-subtitle">{selectedEmployee.title}</p>
-          <span className={`detail-status status-${selectedEmployee.status}`}>{STATUS_LABEL[selectedEmployee.status]}</span>
+          {showStatusColors && selectedEmployee.status !== "standard" && (
+            <span className={`detail-status status-${selectedEmployee.status}`}>{STATUS_LABEL[selectedEmployee.status]}</span>
+          )}
         </div>
       </div>
       <div className="detail-facts">

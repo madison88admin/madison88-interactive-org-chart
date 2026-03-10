@@ -56,7 +56,7 @@ export function EmployeeCard({
   return (
     <button
       type="button"
-      className={`employee-card role-${levelClass} ${statusClass} ${selected ? "is-selected" : ""} ${!isMatch ? "not-match" : ""} ${compact ? "is-compact" : ""} ${isLowZoom ? "zoom-low" : ""} ${isVeryLowZoom ? "zoom-very-low" : ""}`}
+      className={`employee-card ${showStatusColors ? `role-${levelClass}` : ""} ${statusClass} ${selected ? "is-selected" : ""} ${!isMatch ? "not-match" : ""} ${compact ? "is-compact" : ""} ${isLowZoom ? "zoom-low" : ""} ${isVeryLowZoom ? "zoom-very-low" : ""}`}
       data-employee-id={employee.id}
       onClick={() => onClick(employee.id)}
       onMouseEnter={() => onHover?.(employee.id)}

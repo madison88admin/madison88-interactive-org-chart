@@ -2087,6 +2087,7 @@ export default function App() {
           onNotify={showInfoModal}
           readonlyMode={isReadOnlyView}
           isHoverPreview={isReadOnlyView && Boolean(hoveredEmployee)}
+          showStatusColors={showStatusColors}
         />
       </main>
       {hoveredEmployee && hoverPosition && (
